@@ -1,0 +1,695 @@
+{
+  "schema_version": "3.0",
+  "description": "MCP-style sync tool catalog for FRIDAY LLM tool selection. Async specs live in executor/tools/<category>.py; sync metadata here; handlers in executor/tool_handlers.py; dispatch in executor/tools_registry.py.",
+  "safety_levels": {
+    "low": "Read-only, informational, or easily reversible actions.",
+    "medium": "UI/input changes, messaging, or automation that affects open applications.",
+    "high": "Destructive or hard-to-reverse system actions (shutdown, sleep, privileged commands)."
+  },
+  "tools": [
+    {
+      "name": "open_app",
+      "description": "Launch or focus a Windows application by name or alias. Resolves common names (chrome, notepad, calculator, vscode, spotify, discord, whatsapp, terminal, settings). Does not perform in-app UI steps after launch.",
+      "category": "application",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 30,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "app": {
+            "type": "string",
+            "description": "Application name or alias to launch (e.g. chrome, notepad, spotify)."
+          }
+        },
+        "required": ["app"]
+      },
+      "triggers": ["open", "launch", "start", "run"],
+      "when_to_use": "User wants to open or switch to an application without further automation inside it.",
+      "when_not_to_use": "User wants to send a WhatsApp message (use send_whatsapp) or click/type inside an app (use web_agent or type_text).",
+      "examples": [
+        {
+          "user": "open chrome",
+          "tool_call": { "tool": "open_app", "params": { "app": "chrome" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "send_whatsapp_message",
+      "description": "Send a WhatsApp message to a named contact. Opens WhatsApp Desktop, searches the contact, types the message, and sends it. Requires the contact name as saved in WhatsApp.",
+      "category": "communication",
+      "safety_level": "medium",
+      "requires_confirmation": false,
+      "timeout_seconds": 75,
+      "retry_count": 1,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "contact": {
+            "type": "string",
+            "description": "Contact name as it appears in WhatsApp."
+          },
+          "message": {
+            "type": "string",
+            "description": "Message text to send."
+          }
+        },
+        "required": ["contact", "message"]
+      },
+      "triggers": ["whatsapp", "send message", "message to", "text"],
+      "when_to_use": "User explicitly asks to message someone on WhatsApp with message content.",
+      "when_not_to_use": "User only wants WhatsApp opened (use open_app with app=whatsapp).",
+      "examples": [
+        {
+          "user": "send sathish a message on whatsapp saying hi",
+          "tool_call": { "tool": "send_whatsapp_message", "params": { "contact": "sathish", "message": "hi" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "play_music",
+      "description": "Play a song on Spotify Web, YouTube, or YouTube Music. Infer platform from phrases like 'on spotify', 'on youtube', or 'on youtube music'. If the user says only 'play music' with no song, default to AC/DC Back in Black on Spotify Web (browser, not desktop app).",
+      "category": "media",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 60,
+      "retry_count": 1,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "song": {
+            "type": "string",
+            "description": "Song title or artist + title to play."
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["spotify", "youtube", "youtube_music"],
+            "description": "Streaming platform. Defaults to spotify."
+          }
+        },
+        "required": []
+      },
+      "triggers": ["play", "music", "song", "spotify", "youtube"],
+      "when_to_use": "User wants to start playback of a specific song or resume music on a named streaming service.",
+      "when_not_to_use": "User wants next/previous/pause only (use media controls via graph) or a browser search without playback.",
+      "examples": [
+        {
+          "user": "play despacito on spotify",
+          "tool_call": { "tool": "play_music", "params": { "song": "despacito", "platform": "spotify" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "play_youtube_music",
+      "description": "Play a song specifically on YouTube Music (music.youtube.com). Use when the user names YouTube Music explicitly, not generic YouTube video playback.",
+      "category": "media",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 60,
+      "retry_count": 1,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "song": {
+            "type": "string",
+            "description": "Song to search and play on YouTube Music."
+          }
+        },
+        "required": ["song"]
+      },
+      "triggers": ["play", "youtube music", "yt music"],
+      "when_to_use": "User explicitly mentions YouTube Music.",
+      "when_not_to_use": "User mentions Spotify or plain YouTube (use play_music or play_youtube).",
+      "examples": [
+        {
+          "user": "play despacito on youtube music",
+          "tool_call": { "tool": "play_youtube_music", "params": { "song": "despacito" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "play_spotify_music",
+      "description": "Play a song on Spotify Web. Narrower than play_music — use when the user names Spotify without mentioning other platforms.",
+      "category": "media",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 60,
+      "retry_count": 1,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "song": {
+            "type": "string",
+            "description": "Song to search and play on Spotify."
+          }
+        },
+        "required": ["song"]
+      },
+      "triggers": ["play", "spotify"],
+      "when_to_use": "User explicitly wants Spotify playback.",
+      "when_not_to_use": "User also specifies youtube or youtube music (use play_music with platform).",
+      "examples": [
+        {
+          "user": "play despacito on spotify",
+          "tool_call": { "tool": "play_spotify_music", "params": { "song": "despacito" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "play_youtube",
+      "description": "Play a video or song on YouTube (youtube.com), not YouTube Music. Opens YouTube and searches for the requested title.",
+      "category": "media",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 60,
+      "retry_count": 1,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "song": {
+            "type": "string",
+            "description": "Video or song title to search on YouTube."
+          }
+        },
+        "required": ["song"]
+      },
+      "triggers": ["play on youtube", "youtube video"],
+      "when_to_use": "User wants YouTube video playback specifically.",
+      "when_not_to_use": "User says YouTube Music (use play_youtube_music).",
+      "examples": [
+        {
+          "user": "play never gonna give you up on youtube",
+          "tool_call": { "tool": "play_youtube", "params": { "song": "never gonna give you up" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "search_browser",
+      "description": "Open the default browser and run a Google search. Search-only: does not click results, scroll pages, or read article content.",
+      "category": "web",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 20,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query to submit to Google."
+          }
+        },
+        "required": ["query"]
+      },
+      "triggers": ["search", "google", "find", "look up"],
+      "when_to_use": "User wants search results opened in the browser with no follow-up navigation.",
+      "when_not_to_use": "User wants to open/read/scroll an article (use search_and_browse) or a spoken answer (use smart_search).",
+      "examples": [
+        {
+          "user": "search for python tutorials",
+          "tool_call": { "tool": "search_browser", "params": { "query": "python tutorials" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "search_and_browse",
+      "description": "Compound automation: open Chrome, Google-search a query, click the first result, and scroll the page. Use when the user wants search plus navigation in one request.",
+      "category": "web",
+      "safety_level": "medium",
+      "requires_confirmation": false,
+      "timeout_seconds": 120,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Specific search query. Rewrite vague terms like 'any article' into a concrete topic."
+          },
+          "scroll": {
+            "type": "boolean",
+            "description": "Whether to scroll after opening the first result. Defaults to true."
+          }
+        },
+        "required": ["query"]
+      },
+      "triggers": ["search and open", "search and scroll", "find article", "browse article"],
+      "when_to_use": "User asks to search, open a result, and/or scroll in a single utterance.",
+      "when_not_to_use": "User only wants tabs opened with search results (use search_browser) or a summarized answer (use smart_search).",
+      "examples": [
+        {
+          "user": "search for AI news and scroll",
+          "tool_call": { "tool": "search_and_browse", "params": { "query": "AI news", "scroll": true } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "read_headlines",
+      "description": "Fetch and speak the top news headlines (typically three) from Google News for a topic. Returns spoken briefing text, not browser navigation.",
+      "category": "web",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 45,
+      "retry_count": 1,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "News topic or 'latest news'. Defaults to general headlines."
+          }
+        },
+        "required": []
+      },
+      "triggers": ["read news", "headlines", "news summary", "latest news"],
+      "when_to_use": "User wants a spoken news headline briefing.",
+      "when_not_to_use": "User wants to browse full articles in the browser (use search_and_browse).",
+      "examples": [
+        {
+          "user": "read the latest tech headlines",
+          "tool_call": { "tool": "read_headlines", "params": { "query": "technology" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "smart_search",
+      "description": "Answer factual questions with tiered web lookup: DuckDuckGo API, DuckDuckGo HTML scrape, then LLM fallback. Returns a concise answer suitable for speech — no browser UI automation.",
+      "category": "web",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 45,
+      "retry_count": 1,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Question or topic to research and summarize."
+          }
+        },
+        "required": ["query"]
+      },
+      "triggers": ["smart search", "answer", "what is", "who is", "explain"],
+      "when_to_use": "User asks a factual question and wants a direct spoken answer.",
+      "when_not_to_use": "User wants browser navigation, clicking, or scrolling (use search_browser, search_and_browse, or web_agent).",
+      "examples": [
+        {
+          "user": "what is quantum computing",
+          "tool_call": { "tool": "smart_search", "params": { "query": "quantum computing" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "mouse_scroll",
+      "description": "Scroll the active window or page up or down by a number of wheel ticks. Does not use vision or element targeting.",
+      "category": "input",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 15,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "description": "Number of scroll steps. Defaults to 3.",
+            "minimum": 1
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["up", "down"],
+            "description": "Scroll direction. Defaults to down."
+          }
+        },
+        "required": []
+      },
+      "triggers": ["scroll", "scroll down", "scroll up"],
+      "when_to_use": "User wants simple page or window scrolling.",
+      "when_not_to_use": "User needs to find and click a named on-screen element (use web_agent).",
+      "examples": [
+        {
+          "user": "scroll down",
+          "tool_call": { "tool": "mouse_scroll", "params": { "amount": 3, "direction": "down" } }
+        }
+      ],
+      "aliases": ["scroll_page"],
+      "execution": "sync"
+    },
+    {
+      "name": "screenshot",
+      "description": "Capture the current screen and save a PNG image to the user's Desktop folder.",
+      "category": "vision",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 20,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "triggers": ["screenshot", "screen capture", "capture screen", "snap"],
+      "when_to_use": "User wants a saved screenshot file on Desktop.",
+      "when_not_to_use": "User wants OCR or text extraction from the screen (use screen_read in the graph pipeline).",
+      "examples": [
+        {
+          "user": "take a screenshot",
+          "tool_call": { "tool": "screenshot", "params": {} }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "type_text",
+      "description": "Type literal text at the currently focused input or cursor. Subject to window-context preflight checks when an app is specified.",
+      "category": "input",
+      "safety_level": "medium",
+      "requires_confirmation": false,
+      "timeout_seconds": 45,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Exact text to type into the focused field."
+          },
+          "interval": {
+            "type": "number",
+            "description": "Optional delay between keystrokes in seconds."
+          },
+          "app": {
+            "type": "string",
+            "description": "Optional target app name for window-context preflight checks."
+          }
+        },
+        "required": ["text"]
+      },
+      "triggers": ["type", "write text", "enter text"],
+      "when_to_use": "User provides exact text to enter in the focused application.",
+      "when_not_to_use": "User describes clicking a named button or multi-step form workflows (use web_agent).",
+      "examples": [
+        {
+          "user": "type hello world",
+          "tool_call": { "tool": "type_text", "params": { "text": "hello world" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "click_at",
+      "description": "Click at explicit screen pixel coordinates. Only valid when the user supplies numeric x and y values — never infer coordinates from element names.",
+      "category": "input",
+      "safety_level": "medium",
+      "requires_confirmation": false,
+      "timeout_seconds": 15,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "integer",
+            "description": "Horizontal screen coordinate in pixels."
+          },
+          "y": {
+            "type": "integer",
+            "description": "Vertical screen coordinate in pixels."
+          }
+        },
+        "required": ["x", "y"]
+      },
+      "triggers": ["click at", "click position", "click coordinates"],
+      "when_to_use": "User gives exact pixel coordinates for a click.",
+      "when_not_to_use": "User refers to a named UI element like 'login button' (use web_agent).",
+      "examples": [
+        {
+          "user": "click at 500 300",
+          "tool_call": { "tool": "click_at", "params": { "x": 500, "y": 300 } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "browser_agent",
+      "description": "DOM-based browser automation with human-like Puppeteer interaction. Search, open sites, play music, and control media via structured page state + LangChain agent (no vision).",
+      "category": "web",
+      "safety_level": "medium",
+      "requires_confirmation": false,
+      "timeout_seconds": 120,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "Full natural-language browser task."
+          }
+        },
+        "required": ["task"]
+      },
+      "triggers": ["browse", "open website", "search and click", "play on spotify", "browser"],
+      "when_to_use": "User wants in-browser automation: search, navigate, music, media controls.",
+      "when_not_to_use": "Native desktop apps like WhatsApp (use send_whatsapp) or spoken answers only (use smart_search).",
+      "examples": [
+        {
+          "user": "search for AI news and open the first article",
+          "tool_call": { "tool": "browser_agent", "params": { "task": "search for AI news and open the first article" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "web_agent",
+      "description": "Deprecated alias for browser_agent. DOM-based browser automation (no vision).",
+      "category": "automation",
+      "safety_level": "medium",
+      "requires_confirmation": false,
+      "timeout_seconds": 120,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "Full natural-language description of the automation task to perform."
+          },
+          "description": {
+            "type": "string",
+            "description": "Alias for task."
+          },
+          "query": {
+            "type": "string",
+            "description": "Alias for task when phrased as a query."
+          }
+        },
+        "required": []
+      },
+      "triggers": ["click on", "automate", "control my pc", "fill in", "navigate to", "do the task"],
+      "when_to_use": "User needs UI automation by element name, vision, or multi-step workflows.",
+      "when_not_to_use": "User provides exact coordinates (use click_at) or only wants a Google search tab (use search_browser).",
+      "examples": [
+        {
+          "user": "click on the login button",
+          "tool_call": { "tool": "web_agent", "params": { "task": "click on the login button" } }
+        }
+      ],
+      "aliases": ["os_control", "autonomous_task"],
+      "execution": "sync"
+    },
+    {
+      "name": "move_mouse",
+      "description": "Move the mouse cursor visibly to exact screen coordinates supplied by the user. Does not click.",
+      "category": "input",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 15,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "integer",
+            "description": "Target horizontal coordinate in pixels."
+          },
+          "y": {
+            "type": "integer",
+            "description": "Target vertical coordinate in pixels."
+          }
+        },
+        "required": ["x", "y"]
+      },
+      "triggers": ["move mouse", "move cursor", "place cursor"],
+      "when_to_use": "User supplies explicit coordinates to reposition the mouse.",
+      "when_not_to_use": "User wants to click a named element (use web_agent).",
+      "examples": [
+        {
+          "user": "move cursor to 500 300",
+          "tool_call": { "tool": "move_mouse", "params": { "x": 500, "y": 300 } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "hotkey",
+      "description": "Press a keyboard shortcut such as ctrl+c, alt+tab, or win+d. Accepts keys joined by + in a single string.",
+      "category": "input",
+      "safety_level": "medium",
+      "requires_confirmation": false,
+      "timeout_seconds": 15,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "string",
+            "description": "Shortcut keys joined by + (e.g. ctrl+c)."
+          }
+        },
+        "required": ["keys"]
+      },
+      "triggers": ["press", "hotkey", "shortcut", "keyboard shortcut"],
+      "when_to_use": "User requests a specific keyboard shortcut.",
+      "when_not_to_use": "User wants to type readable text (use type_text).",
+      "examples": [
+        {
+          "user": "press ctrl+c",
+          "tool_call": { "tool": "hotkey", "params": { "keys": "ctrl+c" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "volume_control",
+      "description": "Change system volume: mute, unmute, increase, or decrease by a number of steps.",
+      "category": "system",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 15,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["mute", "unmute", "up", "down"],
+            "description": "Volume action to perform."
+          },
+          "amount": {
+            "type": "integer",
+            "description": "Steps for up/down actions. Defaults to 5.",
+            "minimum": 1
+          }
+        },
+        "required": ["action"]
+      },
+      "triggers": ["volume", "mute", "unmute", "louder", "quieter"],
+      "when_to_use": "User wants to change or mute system audio levels.",
+      "when_not_to_use": "User wants media track skip/pause (use graph media tools).",
+      "examples": [
+        {
+          "user": "mute",
+          "tool_call": { "tool": "volume_control", "params": { "action": "mute" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "system_command",
+      "description": "Run a whitelisted diagnostic Windows command: taskmgr, systeminfo, ipconfig, hostname, whoami, ver, battery report, or similar. Arbitrary shell commands are rejected.",
+      "category": "system",
+      "safety_level": "medium",
+      "requires_confirmation": true,
+      "timeout_seconds": 20,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Allowed command prefix (e.g. taskmgr, systeminfo, ipconfig)."
+          }
+        },
+        "required": ["command"]
+      },
+      "triggers": ["task manager", "system info", "ip address", "battery", "hostname"],
+      "when_to_use": "User requests diagnostic or system information via an approved command.",
+      "when_not_to_use": "User requests shutdown, restart, or lock (use graph system tools) or unrestricted shell access.",
+      "examples": [
+        {
+          "user": "open task manager",
+          "tool_call": { "tool": "system_command", "params": { "command": "taskmgr" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "cancel_task",
+      "description": "Cancel or stop running background tasks managed by FRIDAY's task manager. Use task_type 'all' to stop every active task.",
+      "category": "system",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 10,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_type": {
+            "type": "string",
+            "description": "Task type to cancel, or 'all' to stop every active background task."
+          }
+        },
+        "required": []
+      },
+      "triggers": ["stop", "cancel", "shut up", "be quiet"],
+      "when_to_use": "User wants to interrupt FRIDAY background work or long-running tasks.",
+      "when_not_to_use": "User wants to close a desktop application window (use window_close in the graph pipeline).",
+      "examples": [
+        {
+          "user": "cancel all tasks",
+          "tool_call": { "tool": "cancel_task", "params": { "task_type": "all" } }
+        }
+      ],
+      "execution": "sync"
+    },
+    {
+      "name": "chat",
+      "description": "Conversational pass-through when no tool execution is required. Use for greetings, acknowledgements, or delivering a final spoken answer after data has been gathered.",
+      "category": "conversation",
+      "safety_level": "low",
+      "requires_confirmation": false,
+      "timeout_seconds": 5,
+      "retry_count": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "response": {
+            "type": "string",
+            "description": "Optional assistant response text when handled inline."
+          }
+        },
+        "required": []
+      },
+      "triggers": ["hello", "thanks", "how are you", "chat"],
+      "when_to_use": "Greetings, small talk, or summarizing results when no action tool applies.",
+      "when_not_to_use": "User requests any concrete system, UI, or web action — select a specific tool instead.",
+      "examples": [
+        {
+          "user": "hello friday",
+          "tool_call": { "tool": "chat", "params": {} }
+        }
+      ],
+      "execution": "sync"
+    }
+  ]
+}
