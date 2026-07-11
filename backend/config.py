@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     CLOUD_TTS_ENDPOINT: str = ""
     FRIDAY_VOICE_PATH: str = ""
 
+    # STT — local Faster-Whisper is unlimited and keeps microphone audio on-device.
+    # `medium.en` is the accuracy-first default; use `small.en` on lower-spec CPUs.
+    STT_MODEL: str = "medium.en"
+    STT_DEVICE: str = "cpu"
+    STT_COMPUTE_TYPE: str = "int8"
+
     # Browser agent (Puppeteer sidecar)
     BROWSER_AGENT_PORT: int = 9477
     BROWSER_AGENT_URL: str = ""

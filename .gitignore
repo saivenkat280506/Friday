@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -15,6 +16,7 @@
 
 # next.js
 /.next/
+**/.next/
 /out/
 
 # production
@@ -37,6 +39,7 @@ backend/.env
 
 # build artifacts
 /dist/
+**/dist/
 /dist-desktop/
 
 # log files
@@ -80,3 +83,6 @@ backend/mcps/
 
 # runtime data
 data/
+
+# local terminal captures
+terminals/

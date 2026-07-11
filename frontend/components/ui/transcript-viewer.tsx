@@ -9,7 +9,6 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from "react"
-import type { CharacterAlignmentResponseModel } from "@elevenlabs/elevenlabs-js/api/types/CharacterAlignmentResponseModel"
 import { Pause, Play } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -19,6 +18,7 @@ import {
   type TranscriptSegment,
   type TranscriptWord as TranscriptWordType,
   type UseTranscriptViewerResult,
+  type CharacterAlignmentResponseModel,
 } from "@/hooks/use-transcript-viewer"
 import { Button } from "@/components/ui/button"
 import {

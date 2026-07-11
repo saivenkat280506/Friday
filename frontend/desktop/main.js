@@ -12,6 +12,11 @@ const WEB_URL = "http://localhost:3000";
 
 let mainWindow;
 let pythonProcess;
+let overlayWindow;
+
+const OVERLAY_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}html,body{margin:0;background:transparent;overflow:hidden}body{width:104px;height:104px;display:grid;place-items:center;font-family:Segoe UI,sans-serif}.shell{width:80px;height:80px;border-radius:28px;background:rgba(5,7,16,.72);border:1px solid rgba(161,112,255,.42);display:grid;place-items:center;box-shadow:0 12px 44px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.12);backdrop-filter:blur(18px)}.orb{width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 32% 28%,#fff 0 3%,#bc8cff 12%,#5523aa 35%,#12102e 69%);box-shadow:0 0 0 3px rgba(166,113,255,.14),0 0 22px rgba(138,77,255,.85);animation:idle 3s ease-in-out infinite}.label{position:fixed;bottom:0;color:#d9cbff;font-size:9px;font-weight:700;letter-spacing:.17em;text-transform:uppercase;text-shadow:0 1px 7px #000}body[data-state="listening"] .orb{animation:listening .72s ease-in-out infinite}body[data-state="thinking"] .orb,body[data-state="transcribing"] .orb{animation:thinking 1.2s linear infinite}body[data-state="talking"] .orb{animation:talking .35s ease-in-out infinite alternate}@keyframes idle{50%{transform:scale(1.08);box-shadow:0 0 0 6px rgba(166,113,255,.08),0 0 26px rgba(138,77,255,.6)}}@keyframes listening{50%{transform:scale(1.25);box-shadow:0 0 0 12px rgba(89,219,255,.12),0 0 30px #43c8ff}}@keyframes thinking{to{transform:rotate(360deg)}}@keyframes talking{to{transform:scale(1.18,.88);filter:brightness(1.32)}}
+</style></head><body data-state="idle"><div class="shell"><div class="orb"></div></div><div class="label">Friday</div><script>const labels={idle:'Friday',listening:'Listening',thinking:'Thinking',transcribing:'Hearing',talking:'Speaking'};async function update(){try{const r=await fetch('http://127.0.0.1:8000/health',{cache:'no-store'});const d=await r.json();const state=d.state||'idle';document.body.dataset.state=state;document.querySelector('.label').textContent=labels[state]||'Friday'}catch{document.body.dataset.state='idle';document.querySelector('.label').textContent='Offline'}}update();setInterval(update,500);</script></body></html>`;
 
 function logToFile(msg, isError = false) {
   try {
@@ -201,9 +206,42 @@ async function createWindow() {
     mainWindow.show();
   });
 
+  mainWindow.on("minimize", () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.showInactive();
+  });
+
+  mainWindow.on("restore", () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
+  });
+
   mainWindow.on("closed", () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close();
     mainWindow = null;
   });
+}
+
+function createOverlayWindow() {
+  const { screen } = require("electron");
+  const workArea = screen.getPrimaryDisplay().workArea;
+  overlayWindow = new BrowserWindow({
+    width: 104,
+    height: 104,
+    x: Math.round(workArea.x + (workArea.width - 104) / 2),
+    y: workArea.y + 12,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    movable: false,
+    focusable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    show: false,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+  });
+  overlayWindow.setAlwaysOnTop(true, "screen-saver");
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+  overlayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(OVERLAY_HTML)}`);
 }
 
 const gotLock = app.requestSingleInstanceLock();
@@ -218,7 +256,10 @@ if (!gotLock) {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  createOverlayWindow();
+  await createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (pythonProcess) {

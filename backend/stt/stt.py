@@ -18,18 +18,15 @@ import queue
 import time
 import math
 import threading
-import io
-import wave
 import os
-from groq import Groq
 from config import settings
 
 # ── Configuration ────────────────────────────────────────────────────────────
-MODEL_SIZE    = "base.en"
+MODEL_SIZE    = settings.STT_MODEL
 SAMPLE_RATE   = 16000
 FRAME_DURATION= 30       # ms 
 FRAME_SIZE    = int(SAMPLE_RATE * FRAME_DURATION / 1000) * 2 # 960 bytes (16-bit PCM)
-COMPUTE_TYPE  = "int8"
+COMPUTE_TYPE  = settings.STT_COMPUTE_TYPE
 VAD_MODE      = 3        # 0-3 (1=mild, 3=aggressive)
 
 # Timers
@@ -38,47 +35,49 @@ INITIAL_TIMEOUT_FRAMES  = 150  # 150 * 30ms = 4.5s timeout if user never speaks
 PARTIAL_INTERVAL        = 0.5   # Emit partial every 0.5s
 
 # ── Groq Whisper Integration ─────────────────────────────────────────────────
-_groq_client: Groq | None = None
-
-def _get_groq_client() -> Groq:
-    global _groq_client
-    if _groq_client is None:
-        api_key = settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY")
-        _groq_client = Groq(api_key=api_key)
-    return _groq_client
-
-def pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 16000) -> bytes:
-    wav_io = io.BytesIO()
-    with wave.open(wav_io, 'wb') as wav_file:
-        wav_file.setnchannels(1)
-        wav_file.setsampwidth(2)  # 16-bit PCM = 2 bytes
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(pcm_bytes)
-    return wav_io.getvalue()
-
-def transcribe_groq(pcm_bytes: bytes) -> str:
-    if not pcm_bytes:
-        return ""
-    try:
-        wav_data = pcm_to_wav(pcm_bytes)
-        client = _get_groq_client()
-        response = client.audio.transcriptions.create(
-            file=("audio.wav", wav_data),
-            model="whisper-large-v3",
-            language="en",
-            prompt="F.R.I.D.A.Y., Friday, WhatsApp, Chrome, Laxman, Vaasavi, message."
-        )
-        return response.text.strip()
-    except Exception as e:
-        print(f"[Groq STT Error] {e}")
-        return ""
-
 # ── Shared Model (loaded once) ────────────────────────────────────────────────
 _model: WhisperModel | None = None
 
 def _get_model() -> WhisperModel | None:
-    # Disabled local Whisper fallback by default to prevent native C-level library crashes/OOM
-    return None
+    """Load the on-device STT model lazily so startup stays responsive."""
+    global _model
+    if _model is None:
+        try:
+            print(
+                f"[STT] Loading local Faster-Whisper: {MODEL_SIZE} "
+                f"({settings.STT_DEVICE}/{COMPUTE_TYPE})"
+            )
+            _model = WhisperModel(
+                MODEL_SIZE,
+                device=settings.STT_DEVICE,
+                compute_type=COMPUTE_TYPE,
+                cpu_threads=max(2, (os.cpu_count() or 4) - 1),
+            )
+        except Exception as exc:
+            print(f"[STT] Failed to load local model: {exc}")
+            return None
+    return _model
+
+
+def transcribe_local(pcm_bytes: bytes) -> str:
+    """Transcribe VAD-gated PCM locally with an accuracy-oriented prompt."""
+    if not pcm_bytes:
+        return ""
+    model = _get_model()
+    if model is None:
+        return ""
+    audio_array = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+    segments, _ = model.transcribe(
+        audio_array,
+        beam_size=5,
+        best_of=5,
+        language="en",
+        condition_on_previous_text=True,
+        initial_prompt="FRIDAY, F.R.I.D.A.Y., WhatsApp, Chrome, Spotify, YouTube, note, message.",
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=400),
+    )
+    return " ".join(segment.text.strip() for segment in segments).strip()
 
 def listen_stream(partial_cb=None, stop_event=None) -> str:
     """
@@ -121,10 +120,10 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
             audio_bytes = item["data"]
             
             try:
-                # 1. Attempt Cloud-based ultra-fast Groq transcription
-                text = transcribe_groq(audio_bytes)
+                # 1. Local transcription: unlimited use and microphone privacy.
+                text = transcribe_local(audio_bytes)
                 
-                # 2. Local fallback if Groq failed or returned empty
+                # 2. Retry only if an initial local pass returned no transcript.
                 if not text:
                     model = _get_model()
                     if model:
