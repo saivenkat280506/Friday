@@ -207,6 +207,19 @@ def _param_search(m: re.Match[str] | None, text: str) -> dict[str, Any]:
     return {"query": q or text.strip()}
 
 
+def _param_news(m: re.Match[str] | None, text: str) -> dict[str, Any]:
+    """Return a usable news topic instead of forwarding command wording."""
+    topic = re.sub(
+        r"^\s*(?:read|get|show|give me|what are)\s+(?:the\s+)?(?:latest\s+)?(?:news|headlines)\b",
+        "",
+        text,
+        flags=re.I,
+    )
+    topic = re.sub(r"^\s*(?:about|on|for)\s+", "", topic, flags=re.I)
+    topic = topic.strip(" ?!.,")
+    return {"query": topic or "latest news"}
+
+
 def _param_youtube(m: re.Match[str] | None, text: str) -> dict[str, Any]:
     q = re.sub(r".*\b(play|search|open|watch)\s+", "", text, flags=re.I).strip()
     q = re.sub(r"\s+(on|in)\s+youtube.*$", "", q, flags=re.I).strip()
@@ -384,8 +397,8 @@ ROUTING_RULES: list[RoutingRule] = [
     RoutingRule("lock", r"\b(lock|lock screen|lock pc|lock computer)\b", IntentCategory.LOCK, 0.95, _noop),
     RoutingRule("play_toggle", r"\b(play|resume)\b(?!\s+[\w])", IntentCategory.PLAY_MEDIA, 0.82, _noop),
     # ── Knowledge / conversation ──────────────────────────────────────────
-    RoutingRule("news_read", r"\b(read|get|show)\s+(the\s+)?(news|headlines)\b", IntentCategory.NEWS, 0.94, _param_search),
-    RoutingRule("news", r"\b(news|headlines|what'?s happening)\b", IntentCategory.NEWS, 0.91, _noop),
+    RoutingRule("news_read", r"\b(read|get|show)\s+(the\s+)?(news|headlines)\b", IntentCategory.NEWS, 0.94, _param_news),
+    RoutingRule("news", r"\b(news|headlines|what'?s happening)\b", IntentCategory.NEWS, 0.91, _param_news),
     RoutingRule("smart_search", r"\b(smart search|look up)\b", IntentCategory.EXPLAIN, 0.86, _param_search),
     RoutingRule("explain", r"\b(explain|what is|what's|define|tell me about|who is|who's)\b", IntentCategory.EXPLAIN, 0.87, _noop),
     RoutingRule("summarise", r"\b(summarise|summarize|tldr|summary of)\b", IntentCategory.SUMMARISE, 0.88, _noop),

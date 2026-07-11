@@ -148,6 +148,12 @@ BANKS = {
         "I'll keep an eye on that.",
         "Handling that now.",
     ],
+
+    "joke": [
+        "Why did the computer go to the doctor, Boss? It had a virus.",
+        "I tried telling a UDP joke, Boss. I am not sure you got it.",
+        "Why was the keyboard calm, Boss? It had excellent control.",
+    ],
 }
 
 
@@ -246,6 +252,9 @@ class ResponseBuilder:
 
     def background(self) -> str:
         return self._pick("background")
+
+    def joke(self) -> str:
+        return self._pick("joke")
 
     def action_template(self, template: str, params: Optional[dict] = None) -> str:
         """

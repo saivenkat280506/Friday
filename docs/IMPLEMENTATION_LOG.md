@@ -64,3 +64,17 @@
 
 - The companion is a compact 222×152 black widget: violet mini-ring at top-left, waveform/microphone capsule at top-right, and a live task panel with a thin activity trace below.
 - The widget has no card shadow, blur, or diffuse background glow. Its visual hierarchy, proportions, and top control arrangement now follow the supplied screenshot.
+
+## Change set — companion controls and reliable conversation routing
+
+### Before
+
+- The minimized companion was click-through, so neither its microphone capsule nor task panel could be used.
+- The widget's animation was only visible for backend state transitions and appeared inactive at rest.
+- Headline requests could fall through to planning instead of using the headline reader. Casual jokes could drift into invented news. “From local” music requests were treated as a Spotify search.
+
+### After
+
+- The microphone capsule starts listening; the task panel restores the main FRIDAY window. Both controls support keyboard activation.
+- The mini ring, audio bars, and activity trace have a gentle idle motion; live listening, processing, transcription, and speaking animations still follow actual backend state broadcasts.
+- News requests now use the dedicated headline tool, jokes return a concise standalone joke, and local music requests search the user's Music and Downloads folders before launching the matching local audio file.

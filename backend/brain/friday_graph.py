@@ -41,6 +41,7 @@ from brain.memory_manager import MemoryManager
 from brain.groq_client import groq_complete
 from brain.command_enhancer import enhance_command
 from brain.router import ClassificationResult, IntentRouter
+from brain.response_builder import get_builder
 from brain.state import AgentState, ExecutionStatus, IntentCategory, ToolCall
 from executor.tools_registry import ToolRegistry
 
@@ -783,7 +784,15 @@ async def node_respond(state: AgentState) -> AgentState:
     status = state.get("execution_status", ExecutionStatus.PENDING)
     calls = state.get("tool_calls") or []
 
-    if intent in CONVERSATIONAL_INTENTS:
+    request = state.get("cleaned_input", "").lower().strip()
+    if intent == IntentCategory.CHAT and re.search(r"\b(?:tell me|say|give me)\s+(?:a\s+)?joke\b", request):
+        response = get_builder().joke()
+    elif intent == IntentCategory.CHAT and re.fullmatch(
+        r"(?:hi|hello|hey|howdy|yo|good\s+(?:morning|afternoon|evening)|greetings)[!?. ]*",
+        request,
+    ):
+        response = get_builder().greeting()
+    elif intent in CONVERSATIONAL_INTENTS:
         response = await _call_llm(
             state,
             _build_chat_prompt(state),

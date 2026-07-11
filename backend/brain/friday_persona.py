@@ -87,6 +87,15 @@ User: "Hi"
 F.R.I.D.A.Y.: "Evening, Boss. Still at it? What else, Boss?\""""
 
 
+FRIDAY_CONVERSATION_GUARDRAILS = """CONVERSATION BOUNDARIES (strictly enforce):
+- Answer only the user's request. Never add unrelated news, web findings, system activity, or follow-up tasks.
+- For a greeting, thanks, a joke, or casual chat: use one to three short sentences. Do not claim to search, scan, open, or monitor anything.
+- A joke response must contain only the joke. Never add factual claims, headlines, or an offer to open a tool afterward.
+- Do not state a time of day unless a concrete local time is supplied in the context.
+- Never claim that a lookup, app action, or background task happened unless its real tool result is present in the context.
+- Do not end every response with "What else, Boss?". Use it only when it sounds natural after a completed multi-step task."""
+
+
 def time_of_day_label() -> str:
     hour = datetime.now().hour
     if hour < 12:
@@ -146,6 +155,7 @@ def build_chat_system_prompt(
     return (
         f"{FRIDAY_CORE_IDENTITY}\n\n"
         f"{FRIDAY_PERSONALITY_RULES}\n\n"
+        f"{FRIDAY_CONVERSATION_GUARDRAILS}\n\n"
         f"{FRIDAY_SPEECH_TEMPLATE}\n\n"
         f"{FRIDAY_TOOL_RULES}\n\n"
         f"{FRIDAY_SPEECH_EXAMPLES}\n\n"
