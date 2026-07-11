@@ -396,6 +396,7 @@ class ToolRegistry:
             IntentCategory.VOLUME_MUTE: "volume_mute:",
             IntentCategory.SYSTEM_INFO: "system_info:",
             IntentCategory.TIME_DATE: "time_date:",
+            IntentCategory.NEWS: f"read_headlines:{params.get('query') or 'latest news'}",
             IntentCategory.SEARCH_WEB: f"search_web:{params.get('query', '')}",
             IntentCategory.OPEN_YOUTUBE: f"open_youtube:{params.get('query', '')}",
             IntentCategory.OPEN_WHATSAPP: f"send_whatsapp_message:{params.get('contact', '')}",

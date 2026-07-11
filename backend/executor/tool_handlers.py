@@ -297,7 +297,7 @@ class AsyncToolHandlers:
         parts = raw.split(":", 1)
         song = parts[0] if parts and parts[0] else params.get("song", "")
         music_platform = parts[1] if len(parts) > 1 else params.get("platform", "spotify")
-        if not song:
+        if not song and music_platform != "local":
             from executor.music_player import DEFAULT_SONG
 
             song = DEFAULT_SONG

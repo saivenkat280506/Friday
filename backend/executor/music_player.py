@@ -10,9 +10,12 @@ import re
 import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
+import os
 
 DEFAULT_SONG = "AC/DC Back in Black"
 DEFAULT_PLATFORM = "spotify"
+LOCAL_AUDIO_SUFFIXES = {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".aac"}
 
 # Curated fallbacks — avoids flaky search + fixes AC/DC slash encoding issues
 KNOWN_SPOTIFY_TRACKS: dict[str, str] = {
@@ -44,11 +47,17 @@ def parse_music_command(text: str) -> dict:
         return {}
 
     platform = DEFAULT_PLATFORM
+    local_match = re.search(
+        r"\b(?:from|on|in)\s+(?:my\s+)?(?:local|computer|pc)\b|\blocal\s+music\b",
+        lower,
+    )
     platform_match = re.search(
         r"\b(on|in)\s+(spotify|youtube\s+music|yt\s+music|youtube)\b",
         lower,
     )
-    if platform_match:
+    if local_match:
+        platform = "local"
+    elif platform_match:
         platform = _PLATFORM_ALIASES.get(platform_match.group(2).strip(), DEFAULT_PLATFORM)
 
     song = lower
@@ -58,13 +67,15 @@ def parse_music_command(text: str) -> dict:
         "",
         song,
     )
+    song = re.sub(r"\b(?:from|on|in)\s+(?:my\s+)?(?:local|computer|pc)\b", "", song)
+    song = re.sub(r"\blocal\s+music\b", "", song)
     song = re.sub(r"\b(for me|please|now|boss)\b", "", song)
     song = re.sub(r"\b(some\s+)?music\b", "", song)
     song = re.sub(r"\b(a\s+)?song\b", "", song)
     song = re.sub(r"\bthe\s+(song|track)\b", "", song)
     song = song.strip(" .,!?")
 
-    if not song:
+    if not song and platform != "local":
         song = DEFAULT_SONG
 
     return {"song": song, "platform": platform}
@@ -89,6 +100,40 @@ def _fetch_youtube_video_id(song: str) -> str | None:
 
 def _normalize_song_key(song: str) -> str:
     return re.sub(r"\s+", " ", song.lower().strip())
+
+
+def _find_local_track(query: str) -> Path | None:
+    """Find a local audio file without falling back to a web service."""
+    roots = [Path.home() / "Music", Path.home() / "Downloads"]
+    candidates: list[Path] = []
+    needle = _normalize_song_key(query).replace(" ", "")
+
+    for root in roots:
+        if not root.exists():
+            continue
+        try:
+            for candidate in root.rglob("*"):
+                if candidate.is_file() and candidate.suffix.lower() in LOCAL_AUDIO_SUFFIXES:
+                    if not needle or needle in _normalize_song_key(candidate.stem).replace(" ", ""):
+                        candidates.append(candidate)
+        except OSError:
+            continue
+
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def play_local_music(song: str) -> tuple[bool, str]:
+    track = _find_local_track(song)
+    if not track:
+        label = f" matching {song!r}" if song else ""
+        return False, f"I couldn't find a local audio file{label}, Boss."
+    try:
+        os.startfile(str(track))
+        return True, f"Playing local track: {track.stem}."
+    except OSError as exc:
+        return False, f"I found {track.name}, but Windows could not open it: {exc}"
 
 
 def _spotify_encode(song: str) -> str:
@@ -275,6 +320,8 @@ def play_on_spotify(song: str) -> tuple[bool, str]:
 
 def play_music(song: str, platform: str = DEFAULT_PLATFORM) -> tuple[bool, str]:
     platform = (platform or DEFAULT_PLATFORM).lower().replace(" ", "_")
+    if platform == "local":
+        return play_local_music(song)
     if platform == "spotify":
         return play_on_spotify(song)
     if platform == "youtube":
