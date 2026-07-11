@@ -1,0 +1,158 @@
+---
+pid: 42736
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\"; npm run dev:desktop"
+started_at: 2026-06-28T10:06:57.613Z
+running_for_ms: 280010   
+---
+
+> friday@0.1.0 dev:desktop
+> concurrently -k -n web,electron -c cyan,magenta "npm run dev:web" "wait-on http://127.0.0.1:3000 && electron desktop/main.js"
+
+[web] 
+[web] > friday@0.1.0 dev:web
+[web] > next dev
+[web] 
+[web] ▲ Next.js 16.2.4 (Turbopack)
+[web] - Local:         http://localhost:3000
+[web] - Network:       http://172.26.160.1:3000
+[web] ✓ Ready in 1262ms
+[web] 
+[web] Error: Can't resolve 'tw-animate-css' in 'C:\Users\saivenkat\Downloads\FRIDAY'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve 'tw-animate-css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY'\n" +
+[web]     '  Parsed request is a module\n' +
+[web]     '  using description file: C:\\Users\\saivenkat\\package.json (relative path: ./Downloads/FRIDAY)\n' +
+[web]     '    resolve as module\n' +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\FRIDAY\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\node_modules doesn't exist or is not a directory\n" +
+[web]     '      looking for modules in C:\\Users\\saivenkat\\node_modules\n' +
+[web]     '        single file module\n' +
+[web]     '          using description file: C:\\Users\\saivenkat\\package.json (relative path: ./node_modules/tw-animate-css)\n' +
+[web]     '            no extension\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     '            .css\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css.css doesn't exist\n" +
+[web]     "        C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     "      C:\\Users\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\node_modules doesn't exist or is not a directory"
+[web] }
+[web] ○ Compiling / ...
+[web]  HEAD / 200 in 14.3s (next.js: 9.5s, application-code: 4.8s)
+[web]  HEAD / 200 in 11.2s (next.js: 6.5s, application-code: 4.7s)
+[web]  HEAD / 200 in 14.6s (next.js: 9.9s, application-code: 4.7s)
+[web]  HEAD / 200 in 10.2s (next.js: 5.6s, application-code: 4.6s)
+[web]  HEAD / 200 in 14.6s (next.js: 10.0s, application-code: 4.6s)
+[web]  HEAD / 200 in 7.1s (next.js: 2.5s, application-code: 4.6s)
+[web]  HEAD / 200 in 12.1s (next.js: 7.5s, application-code: 4.6s)
+[web]  HEAD / 200 in 12.3s (next.js: 7.8s, application-code: 4.5s)
+[web]  HEAD / 200 in 11.8s (next.js: 7.3s, application-code: 4.5s)
+[web]  HEAD / 200 in 7.9s (next.js: 3.4s, application-code: 4.5s)
+[web]  HEAD / 200 in 14.7s (next.js: 10.3s, application-code: 4.4s)
+[web]  HEAD / 200 in 14.7s (next.js: 10.3s, application-code: 4.4s)
+[web]  HEAD / 200 in 8.4s (next.js: 4.1s, application-code: 4.4s)
+[web]  HEAD / 200 in 9.8s (next.js: 5.4s, application-code: 4.3s)
+[web]  HEAD / 200 in 13.7s (next.js: 9.4s, application-code: 4.3s)
+[web]  HEAD / 200 in 14.7s (next.js: 10.4s, application-code: 4.3s)
+[web]  HEAD / 200 in 14.7s (next.js: 10.5s, application-code: 4.3s)
+[web]  HEAD / 200 in 7.7s (next.js: 3.5s, application-code: 4.2s)
+[web]  HEAD / 200 in 10.1s (next.js: 5.8s, application-code: 4.2s)
+[web]  HEAD / 200 in 7.0s (next.js: 2.8s, application-code: 4.2s)
+[web]  HEAD / 200 in 11.6s (next.js: 7.4s, application-code: 4.2s)
+[web]  HEAD / 200 in 6.5s (next.js: 2.3s, application-code: 4.2s)
+[web]  HEAD / 200 in 9.6s (next.js: 5.4s, application-code: 4.2s)
+[web]  HEAD / 200 in 11.1s (next.js: 7.0s, application-code: 4.2s)
+[web]  HEAD / 200 in 14.3s (next.js: 10.1s, application-code: 4.2s)
+[web]  HEAD / 200 in 7.5s (next.js: 3.4s, application-code: 4.2s)
+[web]  HEAD / 200 in 10.9s (next.js: 6.7s, application-code: 4.1s)
+[web]  HEAD / 200 in 14.8s (next.js: 10.7s, application-code: 4.1s)
+[web]  HEAD / 200 in 8.3s (next.js: 4.2s, application-code: 4.1s)
+[web]  HEAD / 200 in 9.1s (next.js: 5.0s, application-code: 4.1s)
+[web]  HEAD / 200 in 13.3s (next.js: 9.2s, application-code: 4.1s)
+[web]  HEAD / 200 in 10.7s (next.js: 6.6s, application-code: 4.1s)
+[web]  HEAD / 200 in 6.8s (next.js: 2.7s, application-code: 4.1s)
+[web]  HEAD / 200 in 9.4s (next.js: 5.3s, application-code: 4.1s)
+[web]  HEAD / 200 in 8.9s (next.js: 4.8s, application-code: 4.1s)
+[web]  HEAD / 200 in 14.1s (next.js: 10.1s, application-code: 4.0s)
+[web]  HEAD / 200 in 12.8s (next.js: 8.8s, application-code: 4.0s)
+[web]  HEAD / 200 in 13.6s (next.js: 9.6s, application-code: 4.0s)
+[web]  HEAD / 200 in 13.1s (next.js: 9.1s, application-code: 4.0s)
+[web]  HEAD / 200 in 6.3s (next.js: 2.4s, application-code: 4.0s)
+[electron] 
+[web]  GET / 200 in 129ms (next.js: 20ms, application-code: 109ms)
+[web] 
+[web] -----
+[web] FATAL: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\SAIVEN~1\AppData\Local\Temp\next-panic-18c4e23954f848315fe9fbbfa5e0ce73.log.
+[web] 
+[web] To help make Turbopack better, report this error by clicking here.
+[web] -----
+[web] 
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web]  Server  Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>:1:18) {
+[web]   environmentName: 'Server',
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>:1:18) {
+[web]   environmentName: 'Server',
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>:1:18) {
+[web]   environmentName: 'Server',
+[web]   digest: '1406920468',
+[web]   page: '/'
+[web] }
+[web] 
+[web] -----
+[web] FATAL: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\SAIVEN~1\AppData\Local\Temp\next-panic-18c4e23954f848315fe9fbbfa5e0ce73.log.
+[web] 
+[web] To help make Turbopack better, report this error by clicking here.
+[web] -----
+[web] 
+[web] 
+[web] -----
+[web] FATAL: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\SAIVEN~1\AppData\Local\Temp\next-panic-18c4e23954f848315fe9fbbfa5e0ce73.log.
+[web] 
+[web] To help make Turbopack better, report this error by clicking here.
+[web] -----
+[web] 
+[web] 
+[web] -----
+[web] FATAL: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\SAIVEN~1\AppData\Local\Temp\next-panic-18c4e23954f848315fe9fbbfa5e0ce73.log.
+[web] 
+[web] To help make Turbopack better, report this error by clicking here.
+[web] -----
+[web] 
+[web] ○ Compiling /_error ...
+[web] 
+[web] -----
+[web] FATAL: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\SAIVEN~1\AppData\Local\Temp\next-panic-18c4e23954f848315fe9fbbfa5e0ce73.log.
+[web] 
+[web] To help make Turbopack better, report this error by clicking here.
+[web] -----
+[web] 
+[web]  GET / 500 in 10.6s (next.js: 9.9s, application-code: 665ms)
+[web] [browser] Uncaught Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>:1:18)

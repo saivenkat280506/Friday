@@ -1,0 +1,16 @@
+---
+pid: 27492
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\browser-agent\"; node dist/server.js"
+started_at: 2026-06-28T09:54:44.103Z
+running_for_ms: 1010011  
+---
+{"level":30,"time":1782640508384,"pid":20128,"hostname":"venkat_28","msg":"Server listening at http://127.0.0.1:9477"}
+{"level":30,"time":1782640526760,"pid":20128,"hostname":"venkat_28","reqId":"req-1","req":{"method":"GET","url":"/health","host":"127.0.0.1:9477","remoteAddress":"127.0.0.1","remotePort":64781},"msg":"incoming request"}
+{"level":30,"time":1782640526779,"pid":20128,"hostname":"venkat_28","reqId":"req-1","res":{"statusCode":200},"responseTime":17.92769992351532,"msg":"request completed"}
+{"level":30,"time":1782640554310,"pid":20128,"hostname":"venkat_28","reqId":"req-2","req":{"method":"POST","url":"/recipe/googleSearch","host":"127.0.0.1:9477","remoteAddress":"127.0.0.1","remotePort":64786},"msg":"incoming request"}
+{"level":30,"time":1782640562501,"pid":20128,"hostname":"venkat_28","reqId":"req-2","res":{"statusCode":200},"responseTime":8190.227599978447,"msg":"request completed"}
+{"level":30,"time":1782641079913,"pid":20128,"hostname":"venkat_28","reqId":"req-3","req":{"method":"GET","url":"/health","host":"127.0.0.1:9477","remoteAddress":"127.0.0.1","remotePort":54927},"msg":"incoming request"}
+{"level":30,"time":1782641079918,"pid":20128,"hostname":"venkat_28","reqId":"req-3","res":{"statusCode":200},"responseTime":3.551100015640259,"msg":"request completed"}
+{"level":30,"time":1782641088415,"pid":20128,"hostname":"venkat_28","reqId":"req-4","req":{"method":"GET","url":"/health","host":"127.0.0.1:9477","remoteAddress":"127.0.0.1","remotePort":51795},"msg":"incoming request"}
+{"level":30,"time":1782641088417,"pid":20128,"hostname":"venkat_28","reqId":"req-4","res":{"statusCode":200},"responseTime":1.3624999523162842,"msg":"request completed"}

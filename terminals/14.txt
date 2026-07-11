@@ -1,0 +1,64 @@
+---
+pid: 18740
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\"; npm run dev:desktop"
+started_at: 2026-06-28T10:08:40.379Z
+running_for_ms: 175009   
+---
+
+> friday@0.1.0 dev:desktop
+> concurrently -k -n web,electron -c cyan,magenta "npm run dev:web" "wait-on http://127.0.0.1:3000 && electron desktop/main.js"
+
+[web] 
+[web] > friday@0.1.0 dev:web
+[web] > next dev
+[web] 
+[web] ▲ Next.js 16.2.4 (Turbopack)
+[web] - Local:         http://localhost:3000
+[web] - Network:       http://172.26.160.1:3000
+[web] ✓ Ready in 824ms
+[web] 
+[web] Error: Can't resolve 'tw-animate-css' in 'C:\Users\saivenkat\Downloads\FRIDAY'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve 'tw-animate-css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY'\n" +
+[web]     '  Parsed request is a module\n' +
+[web]     '  using description file: C:\\Users\\saivenkat\\package.json (relative path: ./Downloads/FRIDAY)\n' +
+[web]     '    resolve as module\n' +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\FRIDAY\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\node_modules doesn't exist or is not a directory\n" +
+[web]     '      looking for modules in C:\\Users\\saivenkat\\node_modules\n' +
+[web]     '        single file module\n' +
+[web]     '          using description file: C:\\Users\\saivenkat\\package.json (relative path: ./node_modules/tw-animate-css)\n' +
+[web]     '            no extension\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     '            .css\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css.css doesn't exist\n" +
+[web]     "        C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     "      C:\\Users\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\node_modules doesn't exist or is not a directory"
+[web] }
+[web]  HEAD / 200 in 3.8s (next.js: 1928ms, application-code: 1900ms)
+[electron] 
+[electron] wait-on http://127.0.0.1:3000 && electron desktop/main.js exited with code 0
+--> Sending SIGTERM to other processes..
+[web]  HEAD / 200 in 3.7s (next.js: 2.4s, application-code: 1250ms)
+[web]  HEAD / 200 in 3.9s (next.js: 2.6s, application-code: 1307ms)
+[web]  HEAD / 200 in 4.7s (next.js: 3.1s, application-code: 1585ms)
+[web]  HEAD / 200 in 5.2s (next.js: 3.5s, application-code: 1681ms)
+[web]  HEAD / 200 in 5.2s (next.js: 3.4s, application-code: 1777ms)
+[web]  HEAD / 200 in 4.5s (next.js: 3.0s, application-code: 1436ms)
+[web]  HEAD / 200 in 4.2s (next.js: 2.8s, application-code: 1362ms)
+[web]  HEAD / 200 in 5.2s (next.js: 3.5s, application-code: 1635ms)
+[web]  HEAD / 200 in 5.2s (next.js: 3.7s, application-code: 1491ms)
+[web]  HEAD / 200 in 5.2s (next.js: 3.4s, application-code: 1739ms)
+[web]  HEAD / 200 in 5.2s (next.js: 3.6s, application-code: 1540ms)
+[web] npm run dev:web exited with code 1

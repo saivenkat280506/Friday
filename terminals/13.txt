@@ -1,0 +1,64 @@
+---
+pid: 37816
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\"; npm run dev:desktop"
+started_at: 2026-06-28T10:08:16.942Z
+running_for_ms: 200004   
+---
+
+> friday@0.1.0 dev:desktop
+> concurrently -k -n web,electron -c cyan,magenta "npm run dev:web" "wait-on http://127.0.0.1:3000 && electron desktop/main.js"
+
+[web] 
+[web] > friday@0.1.0 dev:web
+[web] > next dev
+[web] 
+[web] ▲ Next.js 16.2.4 (Turbopack)
+[web] - Local:         http://localhost:3000
+[web] - Network:       http://172.26.160.1:3000
+[web] ✓ Ready in 782ms
+[web] 
+[web] Error: Can't resolve '../node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve '../node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY'\n" +
+[web]     '  using description file: C:\\Users\\saivenkat\\package.json (relative path: ./Downloads/FRIDAY)\n' +
+[web]     '    using description file: C:\\Users\\saivenkat\\package.json (relative path: ./Downloads/node_modules/tw-animate-css/dist/tw-animate.css)\n' +
+[web]     '      no extension\n' +
+[web]     "        C:\\Users\\saivenkat\\Downloads\\node_modules\\tw-animate-css\\dist\\tw-animate.css doesn't exist\n" +
+[web]     '      .css\n' +
+[web]     "        C:\\Users\\saivenkat\\Downloads\\node_modules\\tw-animate-css\\dist\\tw-animate.css.css doesn't exist\n" +
+[web]     '      as directory\n' +
+[web]     "        C:\\Users\\saivenkat\\Downloads\\node_modules\\tw-animate-css\\dist\\tw-animate.css doesn't exist"
+[web] }
+[web]  HEAD / 200 in 2.6s (next.js: 361ms, application-code: 2.3s)
+[web]  HEAD / 200 in 2.7s (next.js: 451ms, application-code: 2.2s)
+[web]  HEAD / 200 in 2.7s (next.js: 469ms, application-code: 2.2s)
+[web]  HEAD / 200 in 2.7s (next.js: 506ms, application-code: 2.2s)
+[web]  HEAD / 200 in 2.7s (next.js: 560ms, application-code: 2.1s)
+[web]  HEAD / 200 in 2.7s (next.js: 652ms, application-code: 2.1s)
+[web]  HEAD / 200 in 2.7s (next.js: 667ms, application-code: 2.0s)
+[electron] 
+[web]  GET / 200 in 2.9s (next.js: 587ms, application-code: 2.3s)
+[web] 
+[web] -----
+[web] FATAL: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\SAIVEN~1\AppData\Local\Temp\next-panic-6652983f20b3170068b606fba765930c.log.
+[web] 
+[web] To help make Turbopack better, report this error by clicking here.
+[web] -----
+[web] 
+[electron] wait-on http://127.0.0.1:3000 && electron desktop/main.js exited with code 0
+--> Sending SIGTERM to other processes..
+[web] ⨯ Error: Could not find the module "[project]/Downloads/FRIDAY/frontend/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '90678744'
+[web] }
+[web] npm run dev:web exited with code 1

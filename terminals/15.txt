@@ -1,0 +1,560 @@
+---
+pid: 26600
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\"; npm run dev:desktop"
+started_at: 2026-06-28T10:09:10.294Z
+running_for_ms: 145001   
+---
+
+> friday@0.1.0 dev:desktop
+> concurrently -k -n web,electron -c cyan,magenta "npm run dev:web" "wait-on http://127.0.0.1:3000 && electron desktop/main.js"
+
+[web] 
+[web] > friday@0.1.0 dev:web
+[web] > next dev
+[web] 
+[web] ▲ Next.js 16.2.4 (Turbopack)
+[web] - Local:         http://localhost:3000
+[web] - Network:       http://172.26.160.1:3000
+[web] ✓ Ready in 888ms
+[web] 
+[web] Error: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY'\n" +
+[web]     '  Parsed request is a module\n' +
+[web]     '  using description file: C:\\Users\\saivenkat\\package.json (relative path: ./Downloads/FRIDAY)\n' +
+[web]     '    resolve as module\n' +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\FRIDAY\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\node_modules doesn't exist or is not a directory\n" +
+[web]     '      looking for modules in C:\\Users\\saivenkat\\node_modules\n' +
+[web]     "        C:\\Users\\saivenkat\\node_modules\\frontend doesn't exist\n" +
+[web]     "      C:\\Users\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\node_modules doesn't exist or is not a directory"
+[web] }
+[web] Error: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\app'\n" +
+[web]     '  Parsed request is a module\n' +
+[web]     '  using description file: C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\package.json (relative path: ./app)\n' +
+[web]     '    resolve as module\n' +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\app\\node_modules doesn't exist or is not a directory\n" +
+[web]     '      looking for modules in C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\node_modules\n' +
+[web]     "        C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\node_modules\\frontend doesn't exist\n" +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\FRIDAY\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\node_modules doesn't exist or is not a directory\n" +
+[web]     '      looking for modules in C:\\Users\\saivenkat\\node_modules\n' +
+[web]     "        C:\\Users\\saivenkat\\node_modules\\frontend doesn't exist\n" +
+[web]     "      C:\\Users\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\node_modules doesn't exist or is not a directory"
+[web] }
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 2.5s (next.js: 2.3s, application-code: 228ms)
+[web]  HEAD / 500 in 3.0s (next.js: 3.0s, application-code: 9ms)
+[web]  HEAD / 500 in 3.0s (next.js: 3.0s, application-code: 9ms)
+[web]  HEAD / 500 in 2.3s (next.js: 2.3s, application-code: 9ms)
+[web]  HEAD / 500 in 2.0s (next.js: 2.0s, application-code: 9ms)
+[web]  HEAD / 500 in 3.0s (next.js: 3.0s, application-code: 9ms)
+[web]  HEAD / 500 in 3.0s (next.js: 3.0s, application-code: 9ms)
+[web]  HEAD / 500 in 2.9s (next.js: 2.8s, application-code: 14ms)
+[web]  HEAD / 500 in 3.1s (next.js: 3.0s, application-code: 21ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 90ms (next.js: 76ms, application-code: 14ms)
+[web]  HEAD / 500 in 100ms (next.js: 91ms, application-code: 9ms)
+[web]  HEAD / 500 in 109ms (next.js: 100ms, application-code: 9ms)
+[web]  HEAD / 500 in 115ms (next.js: 107ms, application-code: 8ms)
+[web]  HEAD / 500 in 120ms (next.js: 112ms, application-code: 8ms)
+[web]  HEAD / 500 in 129ms (next.js: 119ms, application-code: 10ms)
+[web]  HEAD / 500 in 139ms (next.js: 131ms, application-code: 8ms)
+[web]  HEAD / 500 in 150ms (next.js: 141ms, application-code: 9ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 23ms (next.js: 14ms, application-code: 9ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 37ms (next.js: 23ms, application-code: 15ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 21ms (next.js: 13ms, application-code: 8ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 55ms (next.js: 26ms, application-code: 30ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 56ms (next.js: 32ms, application-code: 24ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 38ms (next.js: 20ms, application-code: 18ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 55ms (next.js: 29ms, application-code: 26ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 53ms (next.js: 25ms, application-code: 28ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 50ms (next.js: 32ms, application-code: 17ms)
+[web] ⨯ ./app/globals.css
+[web] Error evaluating Node.js code
+[web] CssSyntaxError: tailwindcss: C:\Users\saivenkat\Downloads\FRIDAY\frontend\app\globals.css:1:1: Can't resolve 'frontend/node_modules/tw-animate-css/dist/tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+[web]     [at error (turbopack:///[project]/node_modules/postcss/lib/node.js:146:32)]
+[web]     [at Object.Once (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\@tailwindcss\postcss\dist\index.js:10:6913)]
+[web]     [at process.processTicksAndRejections (node:internal/process/task_queues:105:5)]
+[web]     [at async LazyResult.runAsync (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:293:11)]
+[web]     [at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34)]
+[web]     [at async run (turbopack:///[turbopack-node]/child_process/evaluate.ts:89:23)]
+[web] 
+[web] Import trace:
+[web]   Client Component Browser:
+[web]     ./app/globals.css [Client Component Browser]
+[web]     ./app/layout.tsx [Server Component]
+[web] 
+[web] 
+[web]  HEAD / 500 in 40ms (next.js: 20ms, application-code: 20ms)
+[web] ✓ Compiled in 773ms
+[web]  HEAD / 200 in 2.2s (next.js: 700ms, application-code: 1468ms)
+[web]  HEAD / 200 in 2.5s (next.js: 1130ms, application-code: 1328ms)
+[electron] 
+[electron] wait-on http://127.0.0.1:3000 && electron desktop/main.js exited with code 0
+--> Sending SIGTERM to other processes..
+[web] npm run dev:web exited with code 1

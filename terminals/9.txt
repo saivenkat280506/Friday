@@ -1,0 +1,475 @@
+---
+pid: 25448
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\backend\"; python main.py"
+started_at: 2026-06-28T10:04:05.655Z
+running_for_ms: 449996   
+---
+C:\Users\saivenkat\AppData\Local\Programs\Python\Python312\Lib\site-packages\webrtcvad.py:1: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+15:34:37 [friday.main] INFO — Launching uvicorn on http://127.0.0.1:8000
+[Watchdog] Started (timeout=45.0s, interval=15s).INFO:     Started server process [12776]
+
+[AgentLoop] Background monitor started.
+[ProcessMonitor] Establishing process baseline...
+[ProcessMonitor] Background monitoring service launched successfully.
+INFO:     Waiting for application startup.
+15:34:38 [friday.main] INFO — FRIDAY backend starting — HTTP routes available immediately
+15:34:38 [friday.startup] INFO — Starting background services (7 enabled, 1 skipped)…
+15:34:38 [friday.startup] INFO —   ✓ watchdog started
+15:34:38 [friday.startup] INFO —   ✓ agent_loop started
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+15:34:38 [friday.startup] INFO —   ✓ process_monitor started
+15:34:38 [friday.startup] ERROR —   ✗ background_monitor failed: No module named 'psutil'
+Traceback (most recent call last):
+  File "C:\Users\saivenkat\Downloads\FRIDAY\backend\services\startup.py", line 133, in start_background_services
+    await starter(loop)
+  File "C:\Users\saivenkat\Downloads\FRIDAY\backend\services\startup.py", line 55, in _start_background_monitor
+    from executor.background_monitor import run_background_monitor
+  File "C:\Users\saivenkat\Downloads\FRIDAY\backend\executor\background_monitor.py", line 3, in <module>
+    import psutil
+ModuleNotFoundError: No module named 'psutil'
+15:34:38 [friday.startup] INFO —   ✓ voice_loop started
+15:34:38 [friday.startup] INFO —   ✓ tts_warmup started
+[ProcessMonitor] Baseline set with 100 active processes.
+15:34:39 [friday.voice] INFO — Event-driven voice loop started
+15:34:39 [httpx] INFO — HTTP Request: GET http://127.0.0.1:9477/health "HTTP/1.1 200 OK"
+15:34:39 [friday.browser_agent.process] INFO — Browser agent already running
+15:34:39 [friday.startup] INFO —   ✓ browser_agent started
+15:34:39 [friday.startup] INFO —   − vision_loop disabled
+15:34:39 [friday.startup] INFO — Background service startup complete (6/7)
+15:34:39 [friday.main] INFO — Background services online
+15:34:40 [pocket_tts.conditioners.text] INFO — Loading sentencepiece tokenizer from hf://kyutai/pocket-tts-without-voice-cloning/tokenizer.model@d4fdd22ae8c8e1cb3634e150ebeff1dab2d16df3
+15:34:42 [pocket_tts.models.tts_model] INFO — Loading TTSModel weights from hf://kyutai/pocket-tts/tts_b6369a24.safetensors@427e3d61b276ed69fdd03de0d185fa8a8d97fc5b
+15:34:43 [root] INFO — TTS Model loaded successfully. Its size is 471.0 MB
+[TTS] Loading FRIDAY voice state from cache: C:\Users\saivenkat\Downloads\FRIDAY\backend\tts\voices\friday-voice.safetensors15:34:43 [friday.startup] INFO — Pocket TTS warm-up complete
+
+[TTS] FRIDAY voice ready — cloned from friday-voice.wav
+15:34:45 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:46 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:47 [faster_whisper] INFO — Processing audio with duration 00:02.000
+INFO:     127.0.0.1:51794 - "GET /pipeline/status HTTP/1.1" 200 OK
+15:34:48 [httpx] INFO — HTTP Request: GET http://127.0.0.1:9477/health "HTTP/1.1 200 OK"
+15:34:48 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:49 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:50 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:52 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:53 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:54 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:55 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:56 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:57 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:58 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:34:59 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:00 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:01 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:02 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:03 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:04 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:05 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:06 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:07 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:08 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:09 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:10 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:11 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:12 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Opened: Powercfg (powercfg.exe)
+15:35:13 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:14 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:15 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:16 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:17 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:18 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:19 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Closed: Arc (arc.exe)
+15:35:20 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:21 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:22 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:23 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:24 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:25 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:26 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:27 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:28 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:29 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:30 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:31 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:32 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:33 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:35 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:36 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:37 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:38 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:39 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:40 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:41 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:42 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:43 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:44 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:45 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:46 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:47 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:48 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:49 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Closed: Dataexchangehost (dataexchangehost.exe)
+15:35:50 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:51 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:52 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:53 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:54 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:55 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:56 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:57 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:58 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:35:59 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:00 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:08 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:09 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:09 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:10 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:10 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:11 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:11 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:12 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[Wake] Transcription error: mkl_malloc: failed to allocate memory15:36:23 [faster_whisper] INFO — Processing audio with duration 00:02.000
+
+[ProcessMonitor] Detected App Closed: Powercfg (powercfg.exe)15:36:24 [faster_whisper] INFO — Processing audio with duration 00:02.000
+
+[Wake] Transcription error: mkl_malloc: failed to allocate memory
+[Wake] Transcription error: mkl_malloc: failed to allocate memory
+15:36:26 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[Wake] Transcription error: mkl_malloc: failed to allocate memory
+15:36:28 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[Wake] Transcription error: mkl_malloc: failed to allocate memory
+15:36:30 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[Wake] Transcription error: mkl_malloc: failed to allocate memory
+[Wake] Transcription error: could not create a memory object
+15:36:32 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:34 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[Wake] Transcription error: mkl_malloc: failed to allocate memory
+15:36:37 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[Wake] Transcription error: mkl_malloc: failed to allocate memory
+15:36:39 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[Wake] Transcription error: could not create a memory object
+15:36:41 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:51 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:55 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:56 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:56 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:57 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Opened: Git (git.exe)
+15:36:57 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:58 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:58 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:36:59 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:00 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:01 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:02 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:03 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:04 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:05 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:06 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:07 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:08 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:10 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:11 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:12 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:13 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:14 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:15 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Closed: Git (git.exe)15:37:16 [faster_whisper] INFO — Processing audio with duration 00:02.000
+
+15:37:17 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:18 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:19 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:20 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:21 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:22 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:23 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:24 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:25 [faster_whisper] INFO — Processing audio with duration 00:02.000
+INFO:     127.0.0.1:53327 - "GET /health HTTP/1.1" 200 OK
+15:37:26 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Opened: Electron (electron.exe)
+15:37:27 [faster_whisper] INFO — Processing audio with duration 00:02.000
+INFO:     127.0.0.1:49675 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49675 - "GET /health HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 60319) - "WebSocket /ws" [accepted]
+15:37:27 [friday.api] INFO — WebSocket connected, thread_id=63954ae5-2480-49d6-a97c-70e2386a8153
+INFO:     connection open
+15:37:28 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:29 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:30 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:31 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:32 [faster_whisper] INFO — Processing audio with duration 00:02.000
+INFO:     127.0.0.1:49675 - "GET /health HTTP/1.1" 200 OK
+15:37:33 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:34 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:35 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:36 [faster_whisper] INFO — Processing audio with duration 00:02.000
+INFO:     127.0.0.1:49675 - "GET /health HTTP/1.1" 200 OK
+15:37:36 [friday.command] INFO — Processing command: 'hi' (id=user-1782641256890)
+15:37:36 [friday.runtime] INFO — State → PROCESSING
+15:37:37 [friday.enhancer] INFO — Enhanced: 'hi' → category=general, params={}, hints=['category=general']
+INFO:     127.0.0.1:49675 - "GET /health HTTP/1.1" 200 OK
+15:37:38 [friday.api] INFO — WebSocket closed, cleaned 1 session mappings
+INFO:     connection closed
+15:37:38 [httpx] INFO — HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+15:37:38 [friday.runtime] INFO — State → SPEAKING
+[TTS Gen Error] Could not find current_end in model state, please open an issue at https://github.com/kyutai-labs/pocket-tts/issues15:37:39 [pocket_tts.models.tts_model] INFO — starting timer now!
+
+[TTS Gen Error] Could not find current_end in model state, please open an issue at https://github.com/kyutai-labs/pocket-tts/issues
+[TTS Gen Error] Could not find current_end in model state, please open an issue at https://github.com/kyutai-labs/pocket-tts/issues
+[TTS Gen Error] Could not find current_end in model state, please open an issue at https://github.com/kyutai-labs/pocket-tts/issues
+15:37:39 [friday.runtime] INFO — State → IDLE
+15:37:39 [pocket_tts.models.tts_model] INFO — starting timer now!
+15:37:39 [pocket_tts.models.tts_model] INFO — starting timer now!
+15:37:39 [pocket_tts.models.tts_model] INFO — starting timer now!
+[TTS Gen Error] Could not find current_end in model state, please open an issue at https://github.com/kyutai-labs/pocket-tts/issues
+15:37:39 [pocket_tts.models.tts_model] INFO — starting timer now!
+[TTS] Streaming finished — 0 sentence(s) played.
+15:37:41 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:42 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:43 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:44 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:45 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:46 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:47 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:48 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:49 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:50 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:51 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:52 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:53 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:54 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:55 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Closed: Gamebarpresencewriter (gamebarpresencewriter.exe)
+15:37:56 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:58 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:37:59 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:00 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:01 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:02 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:03 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:04 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:05 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:06 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:07 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:08 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:09 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:10 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:11 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:12 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:13 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:14 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:15 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:16 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:17 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:18 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:19 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:20 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:21 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:22 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:23 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:24 [faster_whisper] INFO — Processing audio with duration 00:02.000
+INFO:     127.0.0.1:51892 - "GET /health HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 60010) - "WebSocket /ws" [accepted]
+INFO:     127.0.0.1:51892 - "GET /health HTTP/1.1" 200 OK
+15:38:25 [friday.api] INFO — WebSocket connected, thread_id=917b4b9e-6ede-4435-b181-c7626d13e2ad
+INFO:     connection open
+15:38:25 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:26 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Opened: Taskkill (taskkill.exe)
+15:38:27 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:28 [friday.api] INFO — WebSocket closed, cleaned 0 session mappings
+INFO:     connection closed
+15:38:28 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:29 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:30 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:31 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Closed: Taskkill (taskkill.exe)
+15:38:32 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:33 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:34 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:35 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:36 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:37 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:38 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:40 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:41 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:42 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:43 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:44 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:45 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:46 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:47 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:48 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:49 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:50 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:51 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Opened: Taskkill (taskkill.exe)
+15:38:52 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:53 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:54 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:55 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:56 [faster_whisper] INFO — Processing audio with duration 00:02.000
+[ProcessMonitor] Detected App Closed: Taskkill (taskkill.exe)
+15:38:57 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:58 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:38:59 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:00 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:01 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:02 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:03 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:04 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:05 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:06 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:07 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:08 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:09 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:10 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:11 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:12 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:13 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:14 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:15 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:16 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:17 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:18 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:19 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:20 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:21 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:23 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:24 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:25 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:26 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:27 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:28 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:29 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:30 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:31 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:32 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:33 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:34 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:35 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:36 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:37 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:38 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:39 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:40 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:41 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:42 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:43 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:44 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:45 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:46 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:47 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:48 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:49 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:50 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:51 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:52 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:53 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:54 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:55 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:56 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:57 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:58 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:39:59 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:00 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:01 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:02 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:03 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:04 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:06 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:07 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:08 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:09 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:10 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:11 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:12 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:13 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:14 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:15 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:16 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:17 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:18 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:19 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:20 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:21 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:22 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:23 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:24 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:25 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:26 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:27 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:28 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:29 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:30 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:31 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:32 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:33 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:34 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:35 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:36 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:37 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:38 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:39 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:40 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:41 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:42 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:43 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:44 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:45 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:46 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:48 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:49 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:50 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:51 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:52 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:53 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:54 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:55 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:56 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:57 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:58 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:40:59 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:00 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:01 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:02 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:03 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:04 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:05 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:06 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:07 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:08 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:09 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:10 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:11 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:12 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:13 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:14 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:15 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:16 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:17 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:18 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:19 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:20 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:21 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:22 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:23 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:24 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:25 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:26 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:27 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:28 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:29 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:31 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:32 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:33 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:34 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:35 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:36 [faster_whisper] INFO — Processing audio with duration 00:02.000
+15:41:37 [faster_whisper] INFO — Processing audio with duration 00:02.000

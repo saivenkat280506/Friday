@@ -1,0 +1,13 @@
+---
+pid: 7508
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "Test-NetConnection -ComputerName 127.0.0.1 -Port 9477 -WarningAction SilentlyContinue | Select-Object TcpTestSucceeded"
+started_at: 2026-06-28T10:03:47.065Z
+running_for_ms: 455003   
+---
+
+TcpTestSucceeded
+----------------
+            True
+
+

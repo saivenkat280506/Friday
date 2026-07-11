@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "FRIDAY Eye",
+  "version": "1.1.0",
+  "description": "Screen capture and vision analysis for FRIDAY AI Assistant",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "scripting",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://localhost:11434/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "FRIDAY Eye"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {}
+}

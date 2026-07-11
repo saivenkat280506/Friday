@@ -1,0 +1,194 @@
+---
+pid: 14272
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\"; npm run dev:desktop"
+started_at: 2026-06-28T10:04:41.004Z
+running_for_ms: 415002   
+---
+
+> friday@0.1.0 dev:desktop
+> concurrently -k -n web,electron -c cyan,magenta "npm run dev:web" "wait-on http://127.0.0.1:3000 && electron desktop/main.js"
+
+[web] 
+[web] > friday@0.1.0 dev:web
+[web] > next dev
+[web] 
+[web] ▲ Next.js 16.2.4 (Turbopack)
+[web] - Local:         http://localhost:3000
+[web] - Network:       http://172.26.160.1:3000
+[web] ✓ Ready in 17.5s
+[web] ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+[web]  We detected multiple lockfiles and selected the directory of C:\Users\saivenkat\package-lock.json as the root directory.
+[web]  To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+[web]    See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+[web]  Detected additional lockfiles: 
+[web]    * C:\Users\saivenkat\Downloads\FRIDAY\frontend\package-lock.json
+[web] 
+[web] 
+[web] ○ Compiling / ...
+[web] Error: Can't resolve 'tw-animate-css' in 'C:\Users\saivenkat\Downloads\FRIDAY'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve 'tw-animate-css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY'\n" +
+[web]     '  Parsed request is a module\n' +
+[web]     '  using description file: C:\\Users\\saivenkat\\package.json (relative path: ./Downloads/FRIDAY)\n' +
+[web]     '    resolve as module\n' +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\FRIDAY\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\node_modules doesn't exist or is not a directory\n" +
+[web]     '      looking for modules in C:\\Users\\saivenkat\\node_modules\n' +
+[web]     '        single file module\n' +
+[web]     '          using description file: C:\\Users\\saivenkat\\package.json (relative path: ./node_modules/tw-animate-css)\n' +
+[web]     '            no extension\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     '            .css\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css.css doesn't exist\n" +
+[web]     "        C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     "      C:\\Users\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\node_modules doesn't exist or is not a directory"
+[web] }
+[web] Error: Can't resolve 'tw-animate-css' in 'C:\Users\saivenkat\Downloads\FRIDAY'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve 'tw-animate-css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY'\n" +
+[web]     '  Parsed request is a module\n' +
+[web]     '  using description file: C:\\Users\\saivenkat\\package.json (relative path: ./Downloads/FRIDAY)\n' +
+[web]     '    resolve as module\n' +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\FRIDAY\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\node_modules doesn't exist or is not a directory\n" +
+[web]     '      looking for modules in C:\\Users\\saivenkat\\node_modules\n' +
+[web]     '        single file module\n' +
+[web]     '          using description file: C:\\Users\\saivenkat\\package.json (relative path: ./node_modules/tw-animate-css)\n' +
+[web]     '            no extension\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     '            .css\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css.css doesn't exist\n" +
+[web]     "        C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     "      C:\\Users\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\node_modules doesn't exist or is not a directory"
+[web] }
+[web] 
+[web] 
+[web] #
+[web] # Fatal process out of memory: Re-embedded builtins: set permissions
+[web] #
+[web] ----- Native stack trace -----
+[web] 
+[web]  1: 00007FF6D417DCAD node::MultiIsolatePlatform::DisposeIsolate+5245
+[web]  2: 00007FF6D5487276 v8::base::FatalOOM+54
+[web]  3: 00007FF6D4E51916 v8::Function::NewInstance+390
+[web]  4: 00007FF6D4CB9F6E v8::CppHeap::CollectGarbageInYoungGenerationForTesting+111118
+[web]  5: 00007FF6D4CED2DF v8::base::CPU::has_sse41+88127
+[web]  6: 00007FF6D4CEDD92 v8::base::CPU::has_sse41+90866
+[web]  7: 00007FF6D4CEE762 v8::base::CPU::has_sse41+93378
+[web]  8: 00007FF6D47ECCC3 v8::internal::Version::GetSONAME+122339
+[web]  9: 00007FF6D4E7CB26 v8::Isolate::Initialize+662
+[web] 10: 00007FF6D4322AAD node::SetIsolateUpForNode+669
+[web] 11: 00007FF6D40A5FA4 RSA_meth_get_flags+214308
+[web] 12: 00007FF6D40A5389 RSA_meth_get_flags+211209
+[web] 13: 00007FF6D40AD6E0 RSA_meth_get_flags+244832
+[web] 14: 00007FF6D4EA6D76 uv_thread_detach+150
+[web] 15: 00007FF6D5FBF076 v8::base::UnsignedDivisionByConstant<unsigned __int64>+2908822
+[web] 16: 00007FFE1451E957 BaseThreadInitThunk+23
+[web] 17: 00007FFE15E87C1C RtlUserThreadStart+44
+[web] 
+[web] 
+[web] #
+[web] # Fatal process out of memory: Re-embedded builtins: set permissions
+[web] #
+[web] ----- Native stack trace -----
+[web] 
+[web] Error: Can't resolve 'tw-animate-css' in 'C:\Users\saivenkat\Downloads\FRIDAY'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve 'tw-animate-css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY'\n" +
+[web]     '  Parsed request is a module\n' +
+[web]     '  using description file: C:\\Users\\saivenkat\\package.json (relative path: ./Downloads/FRIDAY)\n' +
+[web]     '    resolve as module\n' +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\FRIDAY\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\node_modules doesn't exist or is not a directory\n" +
+[web]     '      looking for modules in C:\\Users\\saivenkat\\node_modules\n' +
+[web]     '        single file module\n' +
+[web]     '          using description file: C:\\Users\\saivenkat\\package.json (relative path: ./node_modules/tw-animate-css)\n' +
+[web]     '            no extension\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     '            .css\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css.css doesn't exist\n" +
+[web]     "        C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     "      C:\\Users\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\node_modules doesn't exist or is not a directory"
+[web] }
+[web]  1: 00007FF6D417DCAD node::MultiIsolatePlatform::DisposeIsolate+5245
+[web]  2: 00007FF6D5487276 v8::base::FatalOOM+54
+[web]  3: 00007FF6D4E51916 v8::Function::NewInstance+390
+[web]  4: 00007FF6D4CB9F6E v8::CppHeap::CollectGarbageInYoungGenerationForTesting+111118
+[web]  5: 00007FF6D4CED2DF v8::base::CPU::has_sse41+88127
+[web]  6: 00007FF6D4CEDD92 v8::base::CPU::has_sse41+90866
+[web]  7: 00007FF6D4CEE762 v8::base::CPU::has_sse41+93378
+[web]  8: 00007FF6D47ECCC3 v8::internal::Version::GetSONAME+122339
+[web]  9: 00007FF6D4E7CB26 v8::Isolate::Initialize+662
+[web] 10: 00007FF6D4322AAD node::SetIsolateUpForNode+669
+[web] 11: 00007FF6D40A5FA4 RSA_meth_get_flags+214308
+[web] 12: 00007FF6D40A5389 RSA_meth_get_flags+211209
+[web] 13: 00007FF6D40AD6E0 RSA_meth_get_flags+244832
+[web] 14: 00007FF6D4EA6D76 uv_thread_detach+150
+[web] 15: 00007FF6D5FBF076 v8::base::UnsignedDivisionByConstant<unsigned __int64>+2908822
+[web] 16: 00007FFE1451E957 BaseThreadInitThunk+23
+[web] 17: 00007FFE15E87C1C RtlUserThreadStart+44
+[web] ⚠ Found a change in next.config.ts. Restarting the server to apply the changes...
+[web] Error: Can't resolve 'tw-animate-css' in 'C:\Users\saivenkat\Downloads\FRIDAY'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve 'tw-animate-css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY'\n" +
+[web]     '  Parsed request is a module\n' +
+[web]     '  using description file: C:\\Users\\saivenkat\\package.json (relative path: ./Downloads/FRIDAY)\n' +
+[web]     '    resolve as module\n' +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\FRIDAY\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\node_modules doesn't exist or is not a directory\n" +
+[web]     '      looking for modules in C:\\Users\\saivenkat\\node_modules\n' +
+[web]     '        single file module\n' +
+[web]     '          using description file: C:\\Users\\saivenkat\\package.json (relative path: ./node_modules/tw-animate-css)\n' +
+[web]     '            no extension\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     '            .css\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css.css doesn't exist\n" +
+[web]     "        C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     "      C:\\Users\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\node_modules doesn't exist or is not a directory"
+[web] }
+[web] ▲ Next.js 16.2.4 (Turbopack)
+[web] - Local:         http://localhost:3000
+[web] - Network:       http://172.26.160.1:3000
+[web] ✓ Ready in 5.3s
+[web] 

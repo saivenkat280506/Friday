@@ -1,0 +1,165 @@
+---
+pid: 876
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\"; npm run dev:desktop"
+started_at: 2026-06-28T10:10:03.232Z
+running_for_ms: 90004    
+---
+
+> friday@0.1.0 dev:desktop
+> concurrently -k -n web,electron -c cyan,magenta "npm run dev:web" "wait-on http://127.0.0.1:3000 && electron desktop/main.js"
+
+[web] 
+[web] > friday@0.1.0 dev:web
+[web] > next dev
+[web] 
+[web] ▲ Next.js 16.2.4 (Turbopack)
+[web] - Local:         http://localhost:3000
+[web] - Network:       http://172.26.160.1:3000
+[web] ✓ Ready in 840ms
+[web] 
+[web] Error: Can't resolve 'tw-animate-css' in 'C:\Users\saivenkat\Downloads\FRIDAY'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve 'tw-animate-css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY'\n" +
+[web]     '  Parsed request is a module\n' +
+[web]     '  using description file: C:\\Users\\saivenkat\\package.json (relative path: ./Downloads/FRIDAY)\n' +
+[web]     '    resolve as module\n' +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\FRIDAY\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\Users\\saivenkat\\Downloads\\node_modules doesn't exist or is not a directory\n" +
+[web]     '      looking for modules in C:\\Users\\saivenkat\\node_modules\n' +
+[web]     '        single file module\n' +
+[web]     '          using description file: C:\\Users\\saivenkat\\package.json (relative path: ./node_modules/tw-animate-css)\n' +
+[web]     '            no extension\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     '            .css\n' +
+[web]     "              C:\\Users\\saivenkat\\node_modules\\tw-animate-css.css doesn't exist\n" +
+[web]     "        C:\\Users\\saivenkat\\node_modules\\tw-animate-css doesn't exist\n" +
+[web]     "      C:\\Users\\node_modules doesn't exist or is not a directory\n" +
+[web]     "      C:\\node_modules doesn't exist or is not a directory"
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '2854924250'
+[web] }
+[web]  Server  Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>:1:18) {
+[web]   environmentName: 'Server',
+[web]   digest: '2854924250'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>:1:18) {
+[web]   environmentName: 'Server',
+[web]   digest: '2854924250'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>:1:18) {
+[web]   environmentName: 'Server',
+[web]   digest: '2854924250',
+[web]   page: '/'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }
+[web] Error: Can't resolve './tw-animate.css' in 'C:\Users\saivenkat\Downloads\FRIDAY\frontend\app'
+[web]     [at finishWithoutResolve (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:587:18)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:679:14]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:27:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\DescriptionFilePlugin.js:89:43]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5]
+[web]     [at eval (eval at create (C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\tapable\lib\HookCodeFactory.js:31:10), <anonymous>:15:1)]
+[web]     [at C:\Users\saivenkat\Downloads\FRIDAY\frontend\node_modules\enhanced-resolve\lib\Resolver.js:740:5] {
+[web]   details: "resolve './tw-animate.css' in 'C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\app'\n" +
+[web]     '  using description file: C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\package.json (relative path: ./app)\n' +
+[web]     '    using description file: C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\package.json (relative path: ./app/tw-animate.css)\n' +
+[web]     '      no extension\n' +
+[web]     "        C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\app\\tw-animate.css doesn't exist\n" +
+[web]     '      .css\n' +
+[web]     "        C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\app\\tw-animate.css.css doesn't exist\n" +
+[web]     '      as directory\n' +
+[web]     "        C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\\app\\tw-animate.css doesn't exist"
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '1406920468'
+[web] }
+[web] ⨯ Error: Could not find the module "[project]/app/page.tsx#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+[web]     at stringify (<anonymous>) {
+[web]   digest: '152463064'
+[web] }

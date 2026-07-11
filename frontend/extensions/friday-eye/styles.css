@@ -1,0 +1,301 @@
+/* FRIDAY Eye — Chrome Extension Styles
+   Premium dark theme with glassmorphism */
+
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-card: rgba(20, 20, 35, 0.85);
+  --border-glow: rgba(0, 212, 255, 0.15);
+  --accent-cyan: #00d4ff;
+  --accent-purple: #7c3aed;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888a0;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 340px;
+  min-height: 420px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font);
+  overflow: hidden;
+}
+
+/* ── Header ────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border-glow);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.08), rgba(0, 212, 255, 0.05));
+}
+
+.header-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.header-text h1 {
+  font-size: 15px;
+  font-weight: 600;
+  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 0.5px;
+}
+
+.header-text p {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+/* ── Status Bar ────────────────────────────── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  background: var(--bg-card);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  transition: background 0.3s ease;
+}
+
+.status-dot.connected {
+  background: var(--success);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.status-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+/* ── Content ────────────────────────────────── */
+.content {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Glass Cards ────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-glow);
+  border-radius: 10px;
+  padding: 14px;
+  backdrop-filter: blur(12px);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+  border-color: rgba(0, 212, 255, 0.3);
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.06);
+}
+
+.card-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+/* ── Buttons ────────────────────────────────── */
+.btn {
+  width: 100%;
+  padding: 11px 16px;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(0, 212, 255, 0.2);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 4px 20px rgba(0, 212, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(0, 212, 255, 0.2);
+}
+
+/* ── Toggle Switch ──────────────────────────── */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toggle-label {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.toggle-sub {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 42px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  bottom: 3px;
+  background: var(--text-secondary);
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+  background: #fff;
+}
+
+/* ── Status Message ─────────────────────────── */
+.status-msg {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-height: 16px;
+  text-align: center;
+  padding: 4px 0;
+  transition: color 0.3s ease;
+}
+
+.status-msg.success {
+  color: var(--success);
+}
+
+.status-msg.error {
+  color: var(--danger);
+}
+
+/* ── Last Capture Info ──────────────────────── */
+.capture-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding-top: 4px;
+}
+
+.capture-time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Footer ─────────────────────────────────── */
+.footer {
+  padding: 10px 18px 14px;
+  text-align: center;
+  font-size: 10px;
+  color: rgba(136, 136, 160, 0.5);
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+/* ── Animations ─────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(0, 212, 255, 0.3); }
+  50% { box-shadow: 0 0 24px rgba(0, 212, 255, 0.5); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--success); }
+  50% { opacity: 0.6; box-shadow: 0 0 8px var(--success); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.content {
+  animation: fade-in 0.3s ease;
+}

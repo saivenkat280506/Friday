@@ -1,0 +1,9 @@
+---
+pid: 19740
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "python -c \"import sys; sys.path.insert(0, r'C:\\Users\\saivenkat\\Downloads\\FRIDAY\\backend'); from brain.browser_knowledge import get_browser_knowledge; k=get_browser_knowledge(); print(k.retrieve('spotify play')[:80])\""
+started_at: 2026-06-28T10:01:43.667Z
+running_for_ms: 574998   
+---
+Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download. For better performance, install the package with: `pip install huggingface_hub[hf_xet]` or `pip install hf_xet`
+spotify play music: Open open.spotify.com/search/{song}, click first track row, 

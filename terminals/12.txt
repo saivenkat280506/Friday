@@ -1,0 +1,24 @@
+---
+pid: 31956
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\"; npm run dev:desktop"
+started_at: 2026-06-28T10:07:48.021Z
+running_for_ms: 225014   
+---
+
+> friday@0.1.0 dev:desktop
+> concurrently -k -n web,electron -c cyan,magenta "npm run dev:web" "wait-on http://127.0.0.1:3000 && electron desktop/main.js"
+
+[web] 
+[web] > friday@0.1.0 dev:web
+[web] > next dev
+[web] 
+[electron] 
+[electron] wait-on http://127.0.0.1:3000 && electron desktop/main.js exited with code 0
+--> Sending SIGTERM to other processes..
+[web] ⚠ Port 3000 is in use by process 8252, using available port 3001 instead.
+[web] ▲ Next.js 16.2.4 (Turbopack)
+[web] - Local:         http://localhost:3001
+[web] - Network:       http://172.26.160.1:3001
+[web] ✓ Ready in 1410ms
+[web] npm run dev:web exited with code 1

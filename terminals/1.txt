@@ -1,0 +1,35 @@
+---
+pid: 2860
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "Set-Location C:\\Users\\saivenkat\\Downloads\\FRIDAY\\backend; python scripts\\test_phonebook_send.py sathish \"iam friday ai mr.stark's personal assistant how may I help you today?\""
+started_at: 2026-06-17T09:53:41.204Z
+running_for_ms: 100001   
+---
+
+============================================================
+FRIDAY WhatsApp phonebook live test
+============================================================
+  keyword     : 'sathish'
+  phonebook   : True
+  queries     : ['+91 85199 29108', '918519929108', '+918519929108', '8519929108', '85199 29108', 'sathish']
+  TYPE_ONLY   : 1
+  FAST        : 0
+
+[0] WhatsApp.exe before test: RUNNING
+    (continuing — will reuse existing WhatsApp if window is valid)
+
+[1] open_whatsapp: skipped (already open)
+    window title: 'WhatsApp'
+    window rect  : (L768, T0, R1920, B1160)
+    foreground   : True
+
+[2] send_whatsapp_message_sync (241.9s)
+    success: False
+    stage: search
+    search_query: +91 85199 29108
+    from_phonebook: True
+    error: Could not search for contact 'sathish'.
+    dry_run: False
+
+✗ FAIL at [pipeline]: Could not search for contact 'sathish'.
+Could not open chat for keyword 'sathish'

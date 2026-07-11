@@ -1,0 +1,21 @@
+---
+pid: 20748
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\browser-agent\"; npm run build"
+started_at: 2026-06-28T09:53:27.509Z
+running_for_ms: 1075011  
+---
+
+> friday-browser-agent@0.1.0 build
+> tsc
+
+src/actions.ts(69,35): error TS2345: Argument of type 'string' is not assignable to parameter of type 'KeyInput'.
+src/recipes/google.ts(35,26): error TS2345: Argument of type 'ElementHandle<Node>' is not assignable to parameter of type 'string | ElementHandle<Element>'.
+  Type 'ElementHandle<Node>' is not assignable to type 'ElementHandle<Element>'.
+    Type 'Node' is missing the following properties from type 'Element': attributes, classList, className, clientHeight, and 131 more.
+src/recipes/media.ts(57,31): error TS2345: Argument of type 'string' is not assignable to parameter of type 'KeyInput'.
+src/session/manager.ts(9,11): error TS2339: Property 'use' does not exist on type 'typeof import("C:/Users/saivenkat/Downloads/FRIDAY/browser-agent/node_modules/puppeteer-extra/dist/index")'.
+src/session/manager.ts(76,38): error TS2339: Property 'connect' does not exist on type 'typeof import("C:/Users/saivenkat/Downloads/FRIDAY/browser-agent/node_modules/puppeteer-extra/dist/index")'.
+src/session/manager.ts(97,38): error TS2339: Property 'launch' does not exist on type 'typeof import("C:/Users/saivenkat/Downloads/FRIDAY/browser-agent/node_modules/puppeteer-extra/dist/index")'.
+src/session/manager.ts(112,25): error TS2531: Object is possibly 'null'.
+src/session/manager.ts(113,36): error TS2531: Object is possibly 'null'.

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="styles.css">
+  <title>FRIDAY Eye</title>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-icon">👁</div>
+    <div class="header-text">
+      <h1>FRIDAY EYE</h1>
+      <p>Vision & Screen Analysis</p>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-indicator">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-label" id="statusLabel">Checking...</span>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <!-- Capture Button -->
+    <div class="card">
+      <div class="card-label">Screen Capture</div>
+      <button class="btn btn-primary" id="captureBtn">
+        <span>📸</span> Capture & Analyze
+      </button>
+      <div class="capture-info">
+        <span>Last capture:</span>
+        <span class="capture-time" id="lastCapture">Never</span>
+      </div>
+    </div>
+
+    <!-- Continuous Mode -->
+    <div class="card">
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Continuous Mode</div>
+          <div class="toggle-sub">Auto-capture every 5 seconds</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="continuousToggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Status Message -->
+    <div class="status-msg" id="statusMsg"></div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">FRIDAY AI Assistant • v1.1</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

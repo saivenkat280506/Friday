@@ -1,0 +1,17 @@
+---
+pid: 10848
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\backend\"; pip install \"llama-index>=0.12.0\" \"llama-index-vector-stores-chroma>=0.4.0\" \"llama-index-embeddings-huggingface>=0.5.0\" -q"
+started_at: 2026-06-28T09:56:06.569Z
+running_for_ms: 915000   
+---
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+google-ai-generativelanguage 0.4.0 requires protobuf!=3.20.0,!=3.20.1,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<5.0.0dev,>=3.19.5, but you have protobuf 6.33.6 which is incompatible.
+gradio 5.44.1 requires pydantic<2.12,>=2.0, but you have pydantic 2.12.5 which is incompatible.
+langchain 0.3.24 requires langchain-core<1.0.0,>=0.3.55, but you have langchain-core 1.2.28 which is incompatible.
+langchain 0.3.24 requires langsmith<0.4,>=0.1.17, but you have langsmith 0.7.30 which is incompatible.
+langchain-text-splitters 0.3.8 requires langchain-core<1.0.0,>=0.3.51, but you have langchain-core 1.2.28 which is incompatible.
+litellm 1.83.2 requires tokenizers==0.22.2, but you have tokenizers 0.20.3 which is incompatible.
+
+[notice] A new release of pip is available: 25.3 -> 26.1.2
+[notice] To update, run: python.exe -m pip install --upgrade pip

@@ -1,0 +1,42 @@
+---
+pid: 42060
+cwd: "C:\Users\saivenkat\Downloads\FRIDAY"
+command: "cd \"C:\\Users\\saivenkat\\Downloads\\FRIDAY\\frontend\"; npm run dev:desktop"
+started_at: 2026-06-28T10:10:53.600Z
+running_for_ms: 40002    
+---
+
+> friday@0.1.0 dev:desktop
+> concurrently -k -n web,electron -c cyan,magenta "npm run dev:web" "wait-on http://127.0.0.1:3000 && electron desktop/main.js"
+
+[web] 
+[web] > friday@0.1.0 dev:web
+[web] > next dev
+[web] 
+[web] ▲ Next.js 16.2.4 (Turbopack)
+[web] - Local:         http://localhost:3000
+[web] - Network:       http://172.26.160.1:3000
+[web] ✓ Ready in 733ms
+[web] 
+[web]  HEAD / 200 in 1793ms (next.js: 661ms, application-code: 1132ms)
+[web]  HEAD / 200 in 1812ms (next.js: 749ms, application-code: 1062ms)
+[web]  HEAD / 200 in 2.5s (next.js: 1366ms, application-code: 1111ms)
+[web]  HEAD / 200 in 2.5s (next.js: 1423ms, application-code: 1067ms)
+[web]  HEAD / 200 in 2.5s (next.js: 1434ms, application-code: 1057ms)
+[web]  HEAD / 200 in 2.5s (next.js: 1534ms, application-code: 982ms)
+[web]  HEAD / 200 in 2.4s (next.js: 1439ms, application-code: 928ms)
+[web]  HEAD / 200 in 2.1s (next.js: 1284ms, application-code: 835ms)
+[web]  HEAD / 200 in 2.6s (next.js: 1461ms, application-code: 1090ms)
+[web]  HEAD / 200 in 2.5s (next.js: 1636ms, application-code: 912ms)
+[web]  HEAD / 200 in 2.6s (next.js: 1584ms, application-code: 966ms)
+[web]  HEAD / 200 in 2.3s (next.js: 1420ms, application-code: 889ms)
+[web]  HEAD / 200 in 2.5s (next.js: 1472ms, application-code: 1073ms)
+[web]  HEAD / 200 in 2.4s (next.js: 1454ms, application-code: 992ms)
+[web]  HEAD / 200 in 2.5s (next.js: 1395ms, application-code: 1153ms)
+[web]  HEAD / 200 in 2.6s (next.js: 1505ms, application-code: 1048ms)
+[web]  HEAD / 200 in 2.2s (next.js: 1320ms, application-code: 868ms)
+[web]  HEAD / 200 in 2.6s (next.js: 1618ms, application-code: 935ms)
+[electron] 
+[electron] wait-on http://127.0.0.1:3000 && electron desktop/main.js exited with code 0
+--> Sending SIGTERM to other processes..
+[web] npm run dev:web exited with code 1
