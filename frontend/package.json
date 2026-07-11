@@ -4,8 +4,8 @@
   "private": true,
   "main": "desktop/main.js",
   "scripts": {
-    "dev": "next dev",
-    "dev:web": "next dev",
+    "dev": "next dev --webpack",
+    "dev:web": "next dev --webpack",
     "stop:desktop": "powershell -ExecutionPolicy Bypass -File ../scripts/stop-friday.ps1",
     "dev:desktop": "concurrently -k -n web,electron -c cyan,magenta \"npm run dev:web\" \"wait-on http://127.0.0.1:3000 && electron desktop/main.js\"",
     "build": "next build",
