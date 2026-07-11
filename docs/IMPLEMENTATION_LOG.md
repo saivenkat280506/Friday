@@ -40,3 +40,16 @@
 - The minimized companion is a compact, top-center dark glass card inspired by the supplied reference: a framed violet assistant orb, F.R.I.D.A.Y. branding, live state indicator, status copy, and a small audio meter.
 - Idle mode is intentionally still. Motion appears only while FRIDAY is listening, thinking, transcribing, or speaking; reduced-motion preferences disable all effects.
 - The card remains click-through and always-on-top, so it does not block work on the desktop.
+
+## Change set — synchronized companion motion
+
+### Before
+
+- The card had an external drop shadow and diffuse background glow that visually faded into the desktop.
+- It polled `/health` on a timer, so its animation could lag behind the main application state.
+
+### After
+
+- The card has a clean, shadow-free edge; only the mini orb keeps its contained violet glow.
+- It connects to the same `/ws` state stream as the main application, with health checks only as a recovery fallback.
+- Card movement and orb motion are synchronized with FRIDAY's live state: a 1.96s listening pulse, a slow 8.9s processing cycle, and a 1.3s speaking response rhythm. Idle remains still.
