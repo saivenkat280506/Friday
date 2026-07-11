@@ -53,3 +53,14 @@
 - The card has a clean, shadow-free edge; only the mini orb keeps its contained violet glow.
 - It connects to the same `/ws` state stream as the main application, with health checks only as a recovery fallback.
 - Card movement and orb motion are synchronized with FRIDAY's live state: a 1.96s listening pulse, a slow 8.9s processing cycle, and a 1.3s speaking response rhythm. Idle remains still.
+
+## Change set — reference-aligned compact widget
+
+### Before
+
+- The companion used a wide horizontal information-card layout that did not match the supplied reference widget.
+
+### After
+
+- The companion is a compact 222×152 black widget: violet mini-ring at top-left, waveform/microphone capsule at top-right, and a live task panel with a thin activity trace below.
+- The widget has no card shadow, blur, or diffuse background glow. Its visual hierarchy, proportions, and top control arrangement now follow the supplied screenshot.
