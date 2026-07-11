@@ -83,7 +83,9 @@ def register_routes(app: FastAPI) -> None:
 
     @app.get("/health")
     async def health():
-        return {"status": "online"}
+        from services.runtime_state import get_state
+
+        return {"status": "online", "state": get_state().value}
 
     @app.get("/settings")
     async def get_settings_endpoint():
