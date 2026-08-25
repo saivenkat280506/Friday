@@ -23,16 +23,9 @@ ServiceStarter = Callable[[asyncio.AbstractEventLoop], Awaitable[None]]
 
 
 async def _start_watchdog_heartbeat(loop: asyncio.AbstractEventLoop) -> None:
-    from executor.watchdog import start_watchdog, touch_progress
+    from executor.watchdog import start_watchdog
 
     start_watchdog(loop)
-
-    async def heartbeat() -> None:
-        while True:
-            touch_progress()
-            await asyncio.sleep(30)
-
-    asyncio.create_task(heartbeat(), name="watchdog-heartbeat")
 
 
 async def _start_agent_loop(_loop: asyncio.AbstractEventLoop) -> None:
@@ -69,6 +62,12 @@ async def _start_browser_agent(_loop: asyncio.AbstractEventLoop) -> None:
         logger.warning("Browser agent sidecar did not start — web automation will use fallbacks")
 
 
+async def _start_companion_hotkey(loop: asyncio.AbstractEventLoop) -> None:
+    from services.companion_hotkey import start_companion_hotkey
+
+    await start_companion_hotkey(loop)
+
+
 async def _start_tts_warmup(_loop: asyncio.AbstractEventLoop) -> None:
     from brain.context_manager import is_resource_constrained
 
@@ -84,6 +83,32 @@ async def _start_tts_warmup(_loop: asyncio.AbstractEventLoop) -> None:
             logger.info("Pocket TTS warm-up complete")
         except Exception as exc:
             logger.warning("Pocket TTS warm-up failed: %s", exc)
+        try:
+            from stt.stt import warm_stt_models
+
+            await asyncio.to_thread(warm_stt_models)
+            from services.runtime_state import flags
+
+            flags.stt_ready = True
+            logger.info("STT model warm-up complete")
+            try:
+                from services.websocket_manager import ws_manager
+
+                await ws_manager.broadcast_json(
+                    {
+                        "type": "backend_status",
+                        "backend_status": "online",
+                        "ready": flags.backend_ready,
+                        "stt_ready": True,
+                    }
+                )
+            except Exception:
+                pass
+        except Exception as exc:
+            logger.warning("STT warm-up failed: %s", exc)
+            from services.runtime_state import flags
+
+            flags.stt_ready = True
 
     asyncio.create_task(_warm(), name="tts-warmup")
 
@@ -96,6 +121,7 @@ BACKGROUND_SERVICES: list[tuple[str, ServiceStarter]] = [
     ("process_monitor", _start_process_monitor),
     ("background_monitor", _start_background_monitor),
     ("voice_loop", _start_voice_loop),
+    ("companion_hotkey", _start_companion_hotkey),
     ("tts_warmup", _start_tts_warmup),
     ("browser_agent", _start_browser_agent),
 ]
@@ -128,11 +154,14 @@ async def start_background_services(
         skipped,
     )
     started = 0
+    _SERVICE_TIMEOUT_S = 45.0
     for name, starter in enabled:
         try:
-            await starter(loop)
+            await asyncio.wait_for(starter(loop), timeout=_SERVICE_TIMEOUT_S)
             started += 1
             logger.info("  ✓ %s started", name)
+        except asyncio.TimeoutError:
+            logger.error("  ✗ %s timed out after %.0fs — continuing boot", name, _SERVICE_TIMEOUT_S)
         except Exception as exc:
             logger.error("  ✗ %s failed: %s", name, exc, exc_info=True)
 
@@ -141,17 +170,54 @@ async def start_background_services(
             logger.info("  − %s disabled", name)
 
     logger.info("Background service startup complete (%d/%d)", started, len(enabled))
+    try:
+        from services.runtime_state import flags
+        from stt.stt import _use_groq_stt
+
+        flags.stt_provider = "groq" if _use_groq_stt() else "local"
+        flags.backend_ready = True
+        if flags.stt_provider == "groq":
+            flags.stt_ready = True
+        logger.info("Background services online — STT provider=%s", flags.stt_provider)
+        try:
+            from services.websocket_manager import ws_manager
+
+            await ws_manager.broadcast_json(
+                {
+                    "type": "backend_status",
+                    "backend_status": "online",
+                    "ready": True,
+                    "stt_ready": flags.stt_ready,
+                }
+            )
+        except Exception:
+            pass
+    except Exception as exc:
+        logger.warning("Backend ready flag not set: %s", exc)
 
 
 async def shutdown_services() -> None:
     """Run graceful shutdown hooks (memory consolidation, stop signals)."""
     logger.info("Shutdown initiated")
     try:
+        from services.runtime_state import flags
+
+        flags.backend_ready = False
+        flags.stt_ready = False
+    except Exception:
+        pass
+    try:
         from executor.browser_agent_process import stop_browser_agent_process
 
         await stop_browser_agent_process()
     except Exception as exc:
         logger.warning("Browser agent shutdown failed: %s", exc)
+    try:
+        from services.companion_hotkey import stop_companion_hotkey
+
+        stop_companion_hotkey()
+    except Exception as exc:
+        logger.warning("Companion hotkey shutdown failed: %s", exc)
     try:
         from services.runtime_state import stop_event
 

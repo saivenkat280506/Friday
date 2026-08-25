@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 import sounddevice as sd
-from pocket_tts import TTSModel, export_model_state
+from pocket_tts import TTSModel
 
 _DEFAULT_VOICE_WAV = Path(__file__).with_name("voices") / "friday-voice.wav"
 _FRAMES_AFTER_EOS = 1  # lower = faster synthesis; 1 is enough for clean endings
@@ -54,27 +54,16 @@ def _voice_state_cache_path(wav_path: Path) -> Path:
 
 def _load_friday_voice_state(model: TTSModel, wav_path: Path) -> dict:
     """
-    Build model state from the exact friday-voice.wav file.
-    Caches encoded state beside the WAV for consistent, fast reloads.
+    Build model state from friday-voice.wav.
+
+    The safetensors cache is skipped — exported state lacks ``current_end`` and
+    breaks ``generate_audio`` (pocket-tts issue). Always encode from the WAV.
     """
-    cache_path = _voice_state_cache_path(wav_path)
-    wav_mtime = wav_path.stat().st_mtime
-
-    if cache_path.is_file() and cache_path.stat().st_mtime >= wav_mtime:
-        print(f"[TTS] Loading FRIDAY voice state from cache: {cache_path}")
-        return model.get_state_for_audio_prompt(cache_path, truncate=False)
-
     print(
         f"[TTS] Encoding FRIDAY voice from WAV: {wav_path} "
         f"({wav_path.stat().st_size} bytes, voice cloning)"
     )
-    voice_state = model.get_state_for_audio_prompt(wav_path, truncate=False)
-    try:
-        export_model_state(voice_state, cache_path)
-        print(f"[TTS] Cached FRIDAY voice state: {cache_path}")
-    except Exception as exc:
-        print(f"[TTS] Voice state cache write skipped: {exc}")
-    return voice_state
+    return model.get_state_for_audio_prompt(wav_path, truncate=False)
 
 
 def _get_hardware_sample_rate():
@@ -217,8 +206,7 @@ def normalize_numbers_for_speech(text: str) -> str:
 
     # 3. Ordinals (31st, 2nd, 5th, etc.)
     def ord_repl(match):
-        num, suffix = match.groups()
-        return ordinal_to_words(int(num))
+        return ordinal_to_words(int(match.group(1)))
     text = re.sub(r"\b(\d+)(?:st|nd|rd|th)\b", ord_repl, text, flags=re.IGNORECASE)
 
     # 4. Standalone numbers
@@ -309,6 +297,53 @@ def _ensure_model_loaded():
         print(f"[TTS] FRIDAY voice ready — cloned from {wav_path.name}")
 
 
+def _voice_state_for_generation(*, force_reload: bool = False):
+    """Return in-memory voice state; re-encode from WAV only when missing or forced."""
+    global _voice_state
+    _ensure_model_loaded()
+    if _voice_state is None or force_reload:
+        wav_path = _resolve_voice_wav_path()
+        _voice_state = _load_friday_voice_state(_model, wav_path)
+    return _voice_state
+
+
+_TTS_CHUNK_MAX = 140
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+
+def _split_for_tts(text: str, max_chars: int = _TTS_CHUNK_MAX) -> list[str]:
+    """Break long replies into pocket-tts-safe chunks."""
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks: list[str] = []
+    buf = ""
+    for part in _SENTENCE_SPLIT.split(text):
+        part = part.strip()
+        if not part:
+            continue
+        candidate = f"{buf} {part}".strip() if buf else part
+        if len(candidate) <= max_chars:
+            buf = candidate
+            continue
+        if buf:
+            chunks.append(buf)
+            buf = ""
+        if len(part) <= max_chars:
+            buf = part
+            continue
+        for i in range(0, len(part), max_chars):
+            piece = part[i : i + max_chars].strip()
+            if len(piece) >= 2:
+                chunks.append(piece)
+    if buf:
+        chunks.append(buf)
+    return [c for c in chunks if len(c) >= 2] or [text[:max_chars].strip()]
+
+
 def warm_up_tts():
     """Load the model and voice state ahead of the first spoken response."""
     try:
@@ -364,7 +399,7 @@ _MIN_AUDIBLE_SECONDS = 0.25
 
 
 def _play_samples(samples: np.ndarray, target_rate: int) -> bool:
-    """Play audio and block until speakers finish. Returns False if too short to hear."""
+    """Play audio through a persistent stream for gapless multi-chunk playback."""
     audio = np.asarray(samples, dtype=np.float32).flatten()
     duration = len(audio) / float(target_rate)
     if duration < _MIN_AUDIBLE_SECONDS:
@@ -373,12 +408,23 @@ def _play_samples(samples: np.ndarray, target_rate: int) -> bool:
 
     print(f"[TTS] Playing {duration:.2f}s on device {sd.default.device[1]} @ {target_rate}Hz")
     try:
-        sd.play(audio, target_rate)
-        sd.wait()
+        stream = _ensure_playback_stream(target_rate)
+        block = 1024
+        for start in range(0, len(audio), block):
+            if _stop_event.is_set():
+                return False
+            chunk = audio[start : start + block]
+            stream.write(chunk.reshape(-1, 1))
         return True
     except Exception as exc:
-        print(f"[TTS] sounddevice playback failed ({exc}), trying pygame")
-        return _play_samples_pygame(audio, target_rate)
+        print(f"[TTS] stream playback failed ({exc}), trying sd.play")
+        try:
+            sd.play(audio, target_rate)
+            sd.wait()
+            return True
+        except Exception as exc2:
+            print(f"[TTS] sounddevice playback failed ({exc2}), trying pygame")
+            return _play_samples_pygame(audio, target_rate)
 
 
 def _play_samples_pygame(audio: np.ndarray, target_rate: int) -> bool:
@@ -423,55 +469,52 @@ def _play_samples_pygame(audio: np.ndarray, target_rate: int) -> bool:
             pass
 
 
-def speak(text: str) -> bool:
-    """Generate low-latency local speech from the FRIDAY voice prompt. Returns True on success."""
-    global _is_speaking, _active_stream
+def _set_tts_spoke(ok: bool) -> None:
+    try:
+        from services.runtime_state import flags
 
+        flags.tts_spoke_this_turn = ok
+    except Exception:
+        pass
+
+
+def speak(text: str) -> bool:
+    """Generate speech with sentence prefetching to avoid gaps between chunks."""
     clean_text = clean_text_for_speech(text)
     if len(clean_text) < 2:
+        _set_tts_spoke(False)
         return False
 
     try:
         _ensure_model_loaded()
     except Exception as exc:
         print(f"[TTS Load Error] {exc}")
+        _set_tts_spoke(False)
         return False
 
     if _is_speaking or _stream_active:
         stop_speech()
 
-    if not _playback_lock.acquire(timeout=0.5):
+    chunks = _split_for_tts(clean_text)
+    if not chunks:
+        _set_tts_spoke(False)
         return False
 
     try:
         _stop_event.clear()
-        _is_speaking = True
-        target_rate = _get_hardware_sample_rate()
-
-        raw = _model.generate_audio(
-            model_state=_voice_state,
-            text_to_generate=clean_text,
-            frames_after_eos=_FRAMES_AFTER_EOS,
-            copy_state=True,
-        )
-        if _stop_event.is_set():
-            return False
-
-        samples = _raw_audio_to_samples(raw, target_rate)
-        if samples is None:
-            return False
-
-        if not _play_samples(samples, target_rate):
-            return False
-        return True
+        start_streaming()
+        for chunk in chunks:
+            if _stop_event.is_set():
+                break
+            stream_sentence(chunk)
+        played = stop_streaming(wait_timeout=180.0)
+        ok = played > 0
+        _set_tts_spoke(ok)
+        return ok
     except Exception as exc:
         print(f"[TTS Speak Error] {exc}")
+        _set_tts_spoke(False)
         return False
-    finally:
-        _active_stream = None
-        _is_speaking = False
-        _stop_event.clear()
-        _playback_lock.release()
 
 
 # ── Streaming audio pipeline ────────────────────────────────────────────────────
@@ -491,13 +534,13 @@ def _generate_audio_for_text(text: str) -> np.ndarray | None:
     if len(clean_text) < 2:
         return None
     try:
-        _ensure_model_loaded()
+        voice_state = _voice_state_for_generation()
     except Exception:
         return None
     target_rate = _get_hardware_sample_rate()
     try:
         raw = _model.generate_audio(
-            model_state=_voice_state,
+            model_state=voice_state,
             text_to_generate=clean_text,
             frames_after_eos=_FRAMES_AFTER_EOS,
             copy_state=True,
@@ -513,7 +556,6 @@ def _stream_worker():
     global _active_stream, _is_speaking, _stream_sentences_played
     target_rate = _get_hardware_sample_rate()
 
-    stream = None
     prefetch_lock = threading.Lock()
     prefetch_box: dict[str, Any] = {"sentence": None, "samples": None}
     prefetch_thread: threading.Thread | None = None
@@ -546,16 +588,6 @@ def _stream_worker():
             return "__WAIT__"
 
     try:
-        stream = sd.OutputStream(
-            samplerate=target_rate,
-            channels=1,
-            dtype="float32",
-            latency="low",
-            blocksize=128,
-        )
-        _active_stream = stream
-        stream.start()
-
         while True:
             if _stop_event.is_set():
                 break
@@ -588,30 +620,30 @@ def _stream_worker():
                     prefetch_thread.start()
 
             if samples is not None and not _stop_event.is_set():
-                _is_speaking = True
-                chunk_size = 4096
-                flat = samples.flatten()
-                for i in range(0, len(flat), chunk_size):
-                    if _stop_event.is_set():
-                        break
-                    stream.write(flat[i : i + chunk_size].reshape(-1, 1))
-                _stream_sentences_played += 1
-                _is_speaking = False
+                if not _playback_lock.acquire(timeout=2.0):
+                    continue
+                try:
+                    _is_speaking = True
+                    if _play_samples(samples, target_rate):
+                        _stream_sentences_played += 1
+                finally:
+                    _is_speaking = False
+                    _playback_lock.release()
 
             if prefetch_thread is not None and prefetch_thread.is_alive():
-                prefetch_thread.join(timeout=120.0)
+                prefetch_thread.join(timeout=0.05)
 
     except Exception as exc:
         print(f"[TTS Stream Error] {exc}")
     finally:
         _is_speaking = False
-        if stream is not None:
-            try:
-                stream.stop()
-                stream.close()
-            except Exception:
-                pass
         _active_stream = None
+        try:
+            from services.tts_broadcast import notify_tts_active
+
+            notify_tts_active(False)
+        except Exception:
+            pass
 
 
 def is_streaming() -> bool:
@@ -624,6 +656,12 @@ def start_streaming():
     warm_up_tts()
     _stream_sentences_played = 0
     _stream_active = True
+    try:
+        from services.tts_broadcast import notify_tts_active
+
+        notify_tts_active(True)
+    except Exception:
+        pass
     _stop_event.clear()
     # Drain any stale sentences
     while not _stream_sentence_queue.empty():
@@ -659,21 +697,79 @@ def stream_sentences_played() -> int:
 
 def stop_speech():
     """Stop any current Pocket TTS playback as quickly as possible."""
-    global _active_stream, _is_speaking
+    global _active_stream, _is_speaking, _stream_active, _stream_thread, _playback_stream
 
+    was_speaking = is_tts_active()
     _stop_event.set()
-    # Also abort the streaming pipeline
-    global _stream_active
     _stream_active = False
+
+    while not _stream_sentence_queue.empty():
+        try:
+            _stream_sentence_queue.get_nowait()
+        except queue.Empty:
+            break
+    try:
+        _stream_sentence_queue.put_nowait(None)
+    except queue.Full:
+        pass
+
     try:
         if _active_stream is not None:
             _active_stream.abort()
+            _active_stream.stop()
+            _active_stream.close()
     except Exception as exc:
         print(f"[TTS Stop Error] {exc}")
+    _active_stream = None
+
+    if _stream_thread is not None and _stream_thread.is_alive():
+        _stream_thread.join(timeout=2.0)
+    _stream_thread = None
+    while not _stream_sentence_queue.empty():
+        try:
+            _stream_sentence_queue.get_nowait()
+        except queue.Empty:
+            break
+
+    try:
+        import pygame
+
+        if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+            pygame.mixer.music.stop()
+    except Exception:
+        pass
+
+    if _playback_stream is not None:
+        try:
+            _playback_stream.abort()
+            _playback_stream.stop()
+            _playback_stream.close()
+        except Exception:
+            pass
+        _playback_stream = None
+
+    _is_speaking = False
+    _stop_event.clear()
+    if was_speaking:
+        try:
+            from services.tts_broadcast import notify_tts_active
+
+            notify_tts_active(False)
+        except Exception:
+            pass
 
 
 def is_speaking() -> bool:
     return _is_speaking
+
+
+def is_tts_active() -> bool:
+    """True when audio is generating or playing."""
+    if _is_speaking or _stream_active:
+        return True
+    if _stream_thread is not None and _stream_thread.is_alive():
+        return True
+    return False
 
 
 def speak_filler(text: str):
@@ -705,8 +801,9 @@ def speak_filler(text: str):
         _is_speaking = True
         target_rate = _get_hardware_sample_rate()
 
+        voice_state = _voice_state_for_generation()
         raw = _model.generate_audio(
-            model_state=_voice_state,
+            model_state=voice_state,
             text_to_generate=clean_text,
             frames_after_eos=1,
             copy_state=True,

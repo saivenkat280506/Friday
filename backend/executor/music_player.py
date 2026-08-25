@@ -13,9 +13,24 @@ import urllib.request
 from pathlib import Path
 import os
 
-DEFAULT_SONG = "AC/DC Back in Black"
 DEFAULT_PLATFORM = "spotify"
+DEFAULT_BARE_PLATFORM = "local"
 LOCAL_AUDIO_SUFFIXES = {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".aac"}
+FRIDAY_BUNDLE_MUSIC = Path(__file__).resolve().parent.parent / "local_music"
+DEFAULT_GARAGE_TRACK = FRIDAY_BUNDLE_MUSIC / "garage_music.mp3"
+LOCAL_MUSIC_ROOTS = (
+    FRIDAY_BUNDLE_MUSIC,
+    Path.home() / "Music",
+    Path.home() / "Downloads" / "Audio",
+    Path.home() / "Downloads",
+)
+LOCAL_MUSIC_PREFERRED_ROOTS = (
+    Path.home() / "Music",
+    Path.home() / "Downloads" / "Audio",
+)
+_LOCAL_TRACK_SKIP_TOKENS = frozenset({
+    "voice", "voices", "lines", "tts", "speech", "trailer", "jarvis", "friday", "preview", "mcu",
+})
 
 # Curated fallbacks — avoids flaky search + fixes AC/DC slash encoding issues
 KNOWN_SPOTIFY_TRACKS: dict[str, str] = {
@@ -55,10 +70,10 @@ def parse_music_command(text: str) -> dict:
         r"\b(on|in)\s+(spotify|youtube\s+music|yt\s+music|youtube)\b",
         lower,
     )
-    if local_match:
+    if local_match or re.search(r"\bgarage\b", lower):
         platform = "local"
     elif platform_match:
-        platform = _PLATFORM_ALIASES.get(platform_match.group(2).strip(), DEFAULT_PLATFORM)
+        platform = _PLATFORM_ALIASES.get(platform_match.group(2).strip(), DEFAULT_BARE_PLATFORM)
 
     song = lower
     song = re.sub(r"^(play|start|put on|queue)\s+", "", song)
@@ -75,10 +90,22 @@ def parse_music_command(text: str) -> dict:
     song = re.sub(r"\bthe\s+(song|track)\b", "", song)
     song = song.strip(" .,!?")
 
-    if not song and platform != "local":
-        song = DEFAULT_SONG
+    if not song:
+        platform = DEFAULT_BARE_PLATFORM
+        song = ""
+    elif platform == "local" and re.fullmatch(r"garage", song):
+        song = ""
 
     return {"song": song, "platform": platform}
+
+
+def _is_skipped_local_track(stem: str) -> bool:
+    """Skip assistant voice clips and other non-music samples."""
+    normalized = re.sub(r"[\s_\-()]+", " ", stem.lower()).strip()
+    tokens = set(normalized.split())
+    if tokens & _LOCAL_TRACK_SKIP_TOKENS:
+        return True
+    return "not 100" in normalized
 
 
 def _fetch_youtube_video_id(song: str) -> str | None:
@@ -102,38 +129,77 @@ def _normalize_song_key(song: str) -> str:
     return re.sub(r"\s+", " ", song.lower().strip())
 
 
-def _find_local_track(query: str) -> Path | None:
-    """Find a local audio file without falling back to a web service."""
-    roots = [Path.home() / "Music", Path.home() / "Downloads"]
+def _iter_local_audio_files(roots: tuple[Path, ...] = LOCAL_MUSIC_ROOTS) -> list[Path]:
+    """Collect playable local audio files from the user's music folders."""
     candidates: list[Path] = []
-    needle = _normalize_song_key(query).replace(" ", "")
+    seen: set[str] = set()
 
     for root in roots:
         if not root.exists():
             continue
         try:
             for candidate in root.rglob("*"):
-                if candidate.is_file() and candidate.suffix.lower() in LOCAL_AUDIO_SUFFIXES:
-                    if not needle or needle in _normalize_song_key(candidate.stem).replace(" ", ""):
-                        candidates.append(candidate)
+                if not candidate.is_file():
+                    continue
+                if candidate.suffix.lower() not in LOCAL_AUDIO_SUFFIXES:
+                    continue
+                key = str(candidate.resolve()).lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                if _is_skipped_local_track(candidate.stem):
+                    continue
+                candidates.append(candidate)
         except OSError:
             continue
 
+    return candidates
+
+
+def _pick_latest_track(candidates: list[Path]) -> Path | None:
     if not candidates:
         return None
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
+def _find_local_track(query: str) -> Path | None:
+    """Find a local audio file. Empty query prefers bundled garage music."""
+    needle = _normalize_song_key(query).replace(" ", "")
+
+    if not needle:
+        if DEFAULT_GARAGE_TRACK.is_file():
+            return DEFAULT_GARAGE_TRACK
+        garage_hits = [
+            p
+            for p in _iter_local_audio_files()
+            if "garage" in _normalize_song_key(p.stem)
+        ]
+        pick = _pick_latest_track(garage_hits)
+        if pick is not None:
+            return pick
+
+    if needle:
+        candidates = _iter_local_audio_files()
+        matches = [
+            candidate
+            for candidate in candidates
+            if needle in _normalize_song_key(candidate.stem).replace(" ", "")
+        ]
+        return _pick_latest_track(matches)
+
+    preferred = _pick_latest_track(_iter_local_audio_files(LOCAL_MUSIC_PREFERRED_ROOTS))
+    if preferred is not None:
+        return preferred
+    return _pick_latest_track(_iter_local_audio_files((Path.home() / "Downloads",)))
+
+
 def play_local_music(song: str) -> tuple[bool, str]:
-    track = _find_local_track(song)
-    if not track:
-        label = f" matching {song!r}" if song else ""
-        return False, f"I couldn't find a local audio file{label}, Boss."
-    try:
-        os.startfile(str(track))
-        return True, f"Playing local track: {track.stem}."
-    except OSError as exc:
-        return False, f"I found {track.name}, but Windows could not open it: {exc}"
+    from executor.local_music_player import play_track
+
+    ok, name, _path = play_track(song)
+    if not ok:
+        return False, f"{name}, Boss." if name else "I couldn't find a local audio file, Boss."
+    return True, f"Playing local track: {name}, Boss."
 
 
 def _spotify_encode(song: str) -> str:
@@ -297,9 +363,16 @@ def play_on_youtube_music(song: str) -> tuple[bool, str]:
 
 
 def play_on_spotify(song: str) -> tuple[bool, str]:
-    """Play on Spotify Web (open.spotify.com) — never the desktop app."""
+    """Play on Spotify Desktop when available, otherwise Spotify Web."""
     if not song or not song.strip():
         return False, "No song specified."
+
+    from executor.spotify_control import is_spotify_running, play_song as spotify_desktop_play
+
+    if is_spotify_running():
+        ok, msg = spotify_desktop_play(song)
+        if ok:
+            return True, msg
 
     browser = _try_browser_recipe("playSpotify", {"song": song}, f"play {song} on spotify")
     if browser:

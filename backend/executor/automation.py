@@ -653,49 +653,138 @@ def search_and_summarize_in_notepad(query: str):
 # EXISTING SYSTEM AUTOMATIONS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def read_news_headlines(query: str):
-    """Fetches top 3 headlines and summaries using Google News RSS."""
-    import urllib.request
-    import xml.etree.ElementTree as ET
-    import html
+def _normalize_headline_title(title: str) -> str:
     import re
-    
+
+    title = re.sub(r"\s+-\s+[^-]+$", "", title.strip())
+    return re.sub(r"[^a-z0-9]+", "", title.lower())
+
+
+def _parse_rss_headlines(
+    xml_bytes: bytes,
+    *,
+    cutoff,
+    seen_titles: set[str],
+    collected: list,
+) -> None:
+    import html as html_lib
+    import re
+    import xml.etree.ElementTree as ET
+    from datetime import datetime, timezone
+    from email.utils import parsedate_to_datetime
+
     try:
-        query = query.strip() or "top stories"
+        root = ET.fromstring(xml_bytes)
+    except Exception:
+        return
+
+    for item in root.findall(".//item"):
+        title_el = item.find("title")
+        if title_el is None or not title_el.text:
+            continue
+        title = title_el.text.strip()
+        norm = _normalize_headline_title(title)
+        if not norm or norm in seen_titles:
+            continue
+
+        pub_dt = datetime.now(timezone.utc)
+        pub_el = item.find("pubDate")
+        if pub_el is not None and pub_el.text:
+            try:
+                pub_dt = parsedate_to_datetime(pub_el.text)
+                if pub_dt.tzinfo is None:
+                    pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+            except Exception:
+                pass
+        if pub_dt < cutoff:
+            continue
+
+        desc_el = item.find("description")
+        raw_desc = desc_el.text if desc_el is not None and desc_el.text else ""
+        clean_desc = re.sub(r"<[^>]+>", "", raw_desc)
+        clean_desc = html_lib.unescape(clean_desc).strip()
+        summary = clean_desc.split(". ")[0].strip() if clean_desc else ""
+        if len(summary) > 120:
+            summary = summary[:117] + "..."
+
+        seen_titles.add(norm)
+        collected.append((pub_dt, title, summary))
+
+
+def _fetch_url_bytes(url: str, headers: dict[str, str], timeout: float = 10.0) -> bytes | None:
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    except Exception as exc:
+        print(f"[News] Fetch failed ({url}): {exc}")
+        return None
+
+
+def read_news_headlines(query: str):
+    """Aggregate fresh headlines from multiple live RSS sources (last ~24 hours)."""
+    import re
+    from datetime import datetime, timedelta, timezone
+
+    query = (query or "").strip().lower()
+    generic = {"", "news", "headlines", "latest news", "top stories", "today", "today news"}
+
+    feed_urls: list[str] = [
+        "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/headlines/section/topic/NATION?hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/headlines/section/topic/SCIENCE?hl=en-US&gl=US&ceid=US:en",
+        "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "https://feeds.bbci.co.uk/news/technology/rss.xml",
+        "https://feeds.bbci.co.uk/news/business/rss.xml",
+        "https://www.theguardian.com/world/rss",
+        "https://www.theguardian.com/technology/rss",
+        "https://www.aljazeera.com/xml/rss/all.xml",
+        "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
+        "https://feeds.reuters.com/reuters/topNews",
+        "https://feeds.reuters.com/reuters/worldNews",
+        "https://feeds.reuters.com/reuters/technologyNews",
+    ]
+    if query and query not in generic:
         encoded = urllib.parse.quote(query)
-        rss_url = f"https://news.google.com/rss/search?q={encoded}&hl=en-IN&gl=IN&ceid=IN:en"
-        req = urllib.request.Request(rss_url, headers={"User-Agent": "Mozilla/5.0"})
-        
-        with urllib.request.urlopen(req, timeout=7) as resp:
-            xml_data = resp.read()
-            
-        root = ET.fromstring(xml_data)
-        items = root.findall(".//item")
-        
-        output = []
-        for i, item in enumerate(items[:3]):
-            title = item.find("title").text.strip()
-            title = re.sub(r' - [^-]+$', '', title)
-            
-            description = item.find("description").text or ""
-            clean_desc = re.sub(r'<[^>]+>', '', description)
-            clean_desc = html.unescape(clean_desc)
-            summary = clean_desc.split(". ")[0].strip()
-            if len(summary) > 100:
-                summary = summary[:97] + "..."
-                
-            output.append(f"{i+1}. {title} — {summary}")
-            
-        if output:
-            final_report = "Here are the latest headlines:\n" + "\n".join(output)
-            return True, final_report
-            
-        raise Exception("No news found")
-    except Exception as e:
-        import urllib.parse
-        encoded = urllib.parse.quote_plus(query + " news")
+        feed_urls = [
+            f"https://news.google.com/rss/search?q={encoded}+when:1d&hl=en-US&gl=US&ceid=US:en",
+            f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en",
+            *feed_urls,
+        ]
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    seen_titles: set[str] = set()
+    collected: list[tuple[datetime, str, str]] = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/rss+xml, application/xml, text/xml, */*",
+    }
+
+    for rss_url in feed_urls:
+        payload = _fetch_url_bytes(rss_url, headers)
+        if payload:
+            _parse_rss_headlines(payload, cutoff=cutoff, seen_titles=seen_titles, collected=collected)
+
+    collected.sort(key=lambda row: row[0], reverse=True)
+    if not collected:
+        encoded = urllib.parse.quote_plus((query or "breaking news") + " when:1d")
         open_url_in_arc(f"https://news.google.com/search?q={encoded}&hl=en-US&gl=US&ceid=US:en")
-        return True, "Opening latest news for you."
+        return True, "I couldn't pull live headlines just now — opened fresh news in the browser."
+
+    titles: list[str] = []
+    for _pub_dt, title, _summary in collected[:5]:
+        clean = re.sub(r"\s+", " ", title).strip()
+        if clean and clean not in titles:
+            titles.append(clean)
+
+    if not titles:
+        return True, "I couldn't find fresh headlines to summarize."
+
+    spoken = ". ".join(titles[:5])
+    return True, f"Latest headlines: {spoken}."
 
 def play_youtube(song):
     """Play a song on YouTube via direct watch URL."""

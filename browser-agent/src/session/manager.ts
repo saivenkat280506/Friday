@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import puppeteer from "puppeteer";
 import type { Browser, Page } from "puppeteer";
+import { puppeteer } from "./stealth.js";
 import type { BrowserMode } from "../types.js";
+import { closeExtraTabs, dismissCommonPopups } from "./tabs.js";
 
 const DEFAULT_PORT = Number(process.env.BROWSER_AGENT_PORT || 9477);
 
@@ -44,10 +45,17 @@ function puppeteerProfileDir(): string {
   return base;
 }
 
+function viewport() {
+  const w = Number(process.env.BROWSER_VIEWPORT_WIDTH || 1920);
+  const h = Number(process.env.BROWSER_VIEWPORT_HEIGHT || 1080);
+  return { width: w, height: h };
+}
+
 export class SessionManager {
   private browser: Browser | null = null;
   private page: Page | null = null;
   private mode: BrowserMode = "headed";
+  private connectedViaCdp = false;
 
   get activePage(): Page {
     if (!this.page) throw new Error("Browser session not started");
@@ -62,23 +70,35 @@ export class SessionManager {
     return this.browser;
   }
 
+  setActivePage(page: Page): void {
+    this.page = page;
+  }
+
   async start(mode: BrowserMode = "headed"): Promise<void> {
     if (this.browser) return;
     this.mode = mode;
     const chromePath = resolveChromePath();
     const profile = process.env.CHROME_PROFILE || "Default";
     const cdpUrl = process.env.CHROME_CDP_URL || "http://127.0.0.1:9222";
+    const vp = viewport();
+    this.connectedViaCdp = false;
 
-    try {
-      this.browser = await puppeteer.connect({
-        browserURL: cdpUrl,
-        defaultViewport: { width: 1366, height: 768 },
-      });
-    } catch {
+    if (process.env.CHROME_CDP_URL) {
+      try {
+        this.browser = await puppeteer.connect({
+          browserURL: cdpUrl,
+          defaultViewport: vp,
+        });
+        this.connectedViaCdp = true;
+      } catch {
+        this.browser = null;
+      }
+    }
+
+    if (!this.browser) {
       const userDataDir = puppeteerProfileDir();
       const sourceDir = resolveUserDataDir();
       if (process.env.CHROME_SYNC_PROFILE === "1" && fs.existsSync(sourceDir)) {
-        // Lightweight sync: copy cookies file if present (best-effort).
         const srcCookies = path.join(sourceDir, profile, "Cookies");
         const dstCookies = path.join(userDataDir, profile, "Cookies");
         fs.mkdirSync(path.dirname(dstCookies), { recursive: true });
@@ -100,9 +120,10 @@ export class SessionManager {
           "--no-first-run",
           "--no-default-browser-check",
           "--disable-blink-features=AutomationControlled",
-          "--window-size=1366,768",
+          `--window-size=${vp.width},${vp.height}`,
+          "--autoplay-policy=no-user-gesture-required",
         ],
-        defaultViewport: { width: 1366, height: 768 },
+        defaultViewport: vp,
       });
     }
 
@@ -111,14 +132,21 @@ export class SessionManager {
     const pages = await browser.pages();
     this.page = pages[0] || (await browser.newPage());
     await this.page.bringToFront();
+    await dismissCommonPopups(this.page);
+    await closeExtraTabs(browser, this.page);
   }
 
   async stop(): Promise<void> {
     if (this.browser) {
-      await this.browser.close().catch(() => undefined);
+      if (this.connectedViaCdp) {
+        await this.browser.disconnect().catch(() => undefined);
+      } else {
+        await this.browser.close().catch(() => undefined);
+      }
     }
     this.browser = null;
     this.page = null;
+    this.connectedViaCdp = false;
   }
 
   async ensureStarted(mode?: BrowserMode): Promise<Page> {
@@ -133,6 +161,9 @@ export class SessionManager {
       active: this.isActive,
       mode: this.mode,
       port: DEFAULT_PORT,
+      stealth: !this.connectedViaCdp,
+      connected_via_cdp: this.connectedViaCdp,
+      profile: puppeteerProfileDir(),
     };
   }
 }

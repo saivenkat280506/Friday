@@ -86,3 +86,7 @@ data/
 
 # local terminal captures
 terminals/
+scripts/agent-err.txt
+scripts/agent-out.txt
+backend/data/
+backend/local_music/

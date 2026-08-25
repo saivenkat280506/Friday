@@ -146,7 +146,7 @@ _INTENT_TOOL_RULES: list[tuple[re.Pattern[str], str, dict[str, Any], float, str]
     (
         re.compile(r"\b(play|start)\b.*\b(music|song|track)\b", re.I),
         "play_music",
-        {"platform": "spotify"},
+        {"platform": "local"},
         0.82,
         "play_music",
     ),
@@ -490,7 +490,7 @@ DECISION TREE (apply in order)
 
 PARAMETER RULES
 - NEVER pass vague queries: "any article", "something", "anything" → rewrite to a SPECIFIC topic.
-- play_music default: song "AC/DC Back in Black", platform "spotify".
+- play_music default: play the user's most recent local music file when no song is named (platform "local", empty song).
 - search_and_browse: always include concrete params.query.
 - browser_agent: params.task must be the full natural-language instruction (DOM-based, no vision).
 
@@ -593,9 +593,10 @@ def _enrich_params(tool: str, params: dict[str, Any], user_intent: str | None) -
             parsed = parse_music_command(user_intent)
             params.update({k: v for k, v in parsed.items() if v})
         if tool == "play_music" and not params.get("platform"):
-            params["platform"] = "spotify"
+            params["platform"] = "local"
         if not params.get("song"):
-            params["song"] = "AC/DC Back in Black"
+            params["platform"] = params.get("platform") or "local"
+            params["song"] = ""
 
     if tool in ("web_agent", "browser_agent") and not params.get("task"):
         params["task"] = user_intent or "Complete the user request on screen"

@@ -20,6 +20,8 @@ Write-Host "Stopping FRIDAY..." -ForegroundColor Yellow
 Stop-PortListener 8000
 Stop-PortListener 3000
 
+# Keep the Alt+Space companion hotkey agent running so cold-start still works.
+
 Get-Process -Name electron -ErrorAction SilentlyContinue | ForEach-Object {
     Write-Host "Stopping electron (PID $($_.Id))"
     Stop-Process -Id $_.Id -Force

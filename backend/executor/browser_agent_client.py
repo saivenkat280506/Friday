@@ -22,11 +22,22 @@ def _resolve_mode(task: str = "", explicit: str | None = None) -> str:
         return explicit
     lower = (task or "").lower()
     complex_task = any(
-        k in lower for k in ("browse", "article", "research", "scroll", "multiple", "read")
+        k in lower
+        for k in (
+            "browse",
+            "article",
+            "research",
+            "scroll",
+            "multiple",
+            "read",
+            "chatgpt",
+            "news",
+        )
     )
     default = os.getenv("BROWSER_AGENT_DEFAULT_MODE", "headed")
     if complex_task:
-        return "headless"
+        # Headed keeps Spotify/ChatGPT login in the persistent profile.
+        return "headed"
     return default if default in ("headed", "headless") else "headed"
 
 
@@ -46,9 +57,21 @@ class BrowserAgentClient:
             r.raise_for_status()
             return r.json()
 
+    async def stop_session(self) -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(f"{self.base_url}/session/stop")
+            r.raise_for_status()
+            return r.json()
+
     async def observe(self) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             r = await client.post(f"{self.base_url}/observe")
+            r.raise_for_status()
+            return r.json()
+
+    async def screenshot(self) -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.post(f"{self.base_url}/screenshot")
             r.raise_for_status()
             return r.json()
 

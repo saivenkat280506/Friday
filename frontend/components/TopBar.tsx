@@ -19,11 +19,12 @@ const iconBtn =
   "inline-flex items-center justify-center rounded-xl h-9 w-9 bg-white/40 dark:bg-zinc-800/40 hover:bg-white/80 dark:hover:bg-zinc-700/80 border border-white/60 dark:border-zinc-700/60 shadow-sm transition-all active:scale-95 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
 
 export default function TopBar({ onSettingsClick, onRefreshChat }: TopBarProps) {
-  const { status, latency } = useBackendStatus(5000);
+  const { status, latency, ready, sttReady } = useBackendStatus(3000);
   const [networkOpen, setNetworkOpen] = useState(false);
 
   const isOnline   = status === "online";
-  const isChecking = status === "checking";
+  const isChecking = status === "checking" || status === "starting";
+  const isStarting = status === "starting";
 
   /* ── badge colours ── */
   const badgeCls = isChecking
@@ -38,7 +39,13 @@ export default function TopBar({ onSettingsClick, onRefreshChat }: TopBarProps) 
     ? "bg-emerald-500 animate-pulse"
     : "bg-red-500";
 
-  const badgeLabel = isChecking ? "CHECKING…" : isOnline ? "BACKEND ONLINE" : "BACKEND OFFLINE";
+  const badgeLabel = isOnline
+    ? "BACKEND ONLINE"
+    : isStarting
+    ? "STARTING…"
+    : isChecking
+    ? "CHECKING…"
+    : "BACKEND OFFLINE";
 
   const StatusIcon = isChecking ? Loader2 : isOnline ? Wifi : WifiOff;
 
@@ -157,7 +164,15 @@ export default function TopBar({ onSettingsClick, onRefreshChat }: TopBarProps) 
             <div className="px-5 py-4 space-y-3">
               <StatRow
                 label="Backend"
-                value={isChecking ? "—" : isOnline ? "ONLINE" : "OFFLINE"}
+                value={
+                  isOnline
+                    ? "ONLINE"
+                    : status === "starting"
+                    ? "STARTING"
+                    : isChecking
+                    ? "CHECKING"
+                    : "OFFLINE"
+                }
                   valueClass={
                     isOnline
                       ? "text-emerald-600 dark:text-emerald-400"

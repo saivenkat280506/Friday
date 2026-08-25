@@ -132,13 +132,44 @@ def _param_open_app(m: re.Match[str] | None, text: str) -> dict[str, Any]:
     return {"app": app.strip()}
 
 
+def _param_new_project(m: re.Match[str] | None, text: str) -> dict[str, Any]:
+    """Open VS Code with a fresh workspace — not an existing project."""
+    name = ""
+    name_match = re.search(
+        r"(?:called|named)\s+([\w][\w\-]*)",
+        text,
+        re.I,
+    )
+    if name_match:
+        name = name_match.group(1)
+    return {
+        "app": "vscode",
+        "fresh_workspace": True,
+        "project_name": name,
+    }
+
+
 def _param_volume(m: re.Match[str] | None, text: str) -> dict[str, Any]:
-    lvl_match = re.search(r"\b(\d{1,3})\s*%?\b", text)
+    reduce_by = re.search(
+        r"\b(?:reduce|lower|decrease)\s+(?:the\s+)?volume\s+by\s+(\d{1,3})\b",
+        text,
+        re.I,
+    )
+    increase_by = re.search(
+        r"\b(?:increase|raise)\s+(?:the\s+)?volume\s+by\s+(\d{1,3})\b",
+        text,
+        re.I,
+    )
+    if reduce_by:
+        return {"level": int(reduce_by.group(1)), "direction": "reduce"}
+    if increase_by:
+        return {"level": int(increase_by.group(1)), "direction": "increase"}
+    lvl_match = re.search(r"\b(\d{1,3})\s*(?:%|out\s+of\s+100)?\b", text)
     lvl = int(lvl_match.group(1)) if lvl_match else None
     if re.search(r"\b(mute|silence)\b", text, re.I):
         return {"level": 0, "direction": "set"}
     up = re.search(r"\b(up|increase|louder|raise)\b", text, re.I)
-    dn = re.search(r"\b(down|decrease|quieter|lower)\b", text, re.I)
+    dn = re.search(r"\b(down|decrease|quieter|lower|reduce)\b", text, re.I)
     return {"level": lvl, "direction": "up" if up else "down" if dn else "set"}
 
 
@@ -322,6 +353,13 @@ ROUTING_RULES: list[RoutingRule] = [
     RoutingRule("thanks", r"^(thanks|thank you|thx|cheers)\b", IntentCategory.CHAT, 0.90, _noop),
     RoutingRule("goodbye", r"^(bye|goodbye|see you|later)\b", IntentCategory.CHAT, 0.88, _noop),
     RoutingRule("how_are_you", r"\bhow are you\b", IntentCategory.CHAT, 0.90, _noop),
+    RoutingRule(
+        "introduce_self",
+        r"\b(introduce\s+(yourself|your\s+self)|who\s+are\s+you|what\s+are\s+you|tell\s+me\s+about\s+(yourself|you)|what\s+do\s+you\s+do)\b",
+        IntentCategory.CHAT,
+        0.94,
+        _noop,
+    ),
     RoutingRule("speak_aloud", r"\b(speak|say|tell\s+me)\s+(something|a\s+joke|a\s+story|out\s+loud|aloud)\b", IntentCategory.CHAT, 0.93, _noop),
     RoutingRule("speak_verb", r"^(speak|say)\b", IntentCategory.CHAT, 0.91, _noop),
     # ── Media transport (before generic play) ─────────────────────────────
@@ -354,6 +392,34 @@ ROUTING_RULES: list[RoutingRule] = [
     RoutingRule("window_close", r"\b(close|quit|exit)\s+(?P<app>[\w\s.+]+?)\s*(window|app)?\b", IntentCategory.WINDOW_CLOSE, 0.92, _param_open_app),
     RoutingRule("window_minimize", r"\b(minimize|minimise|hide)\s+(?:the\s+)?(?:window|app)?\b", IntentCategory.WINDOW_CLOSE, 0.82, _noop),
     # ── Apps & search ─────────────────────────────────────────────────────
+    RoutingRule(
+        "new_project",
+        r"\b(?:i\s+)?(?:want|wanna|would\s+like)\s+to\s+(?:work\s+on|start|begin|create)\s+(?:a\s+)?(?:new|fresh|blank)\s+project\b",
+        IntentCategory.OPEN_APP,
+        0.97,
+        _param_new_project,
+    ),
+    RoutingRule(
+        "new_project_short",
+        r"\b(?:let'?s\s+)?(?:work\s+on|start|begin|create)\s+(?:a\s+)?(?:new|fresh|blank)\s+project\b",
+        IntentCategory.OPEN_APP,
+        0.96,
+        _param_new_project,
+    ),
+    RoutingRule(
+        "vscode_new_project",
+        r"\bopen\s+(?:vs\s*code|visual\s+studio\s+code|vscode)\b.*\b(?:new|fresh|blank)\s+(?:project|workspace)\b",
+        IntentCategory.OPEN_APP,
+        0.97,
+        _param_new_project,
+    ),
+    RoutingRule(
+        "vscode_new_project_alt",
+        r"\b(?:new|fresh|blank)\s+(?:project|workspace)\b.*\b(?:in\s+)?(?:vs\s*code|visual\s+studio\s+code|vscode)\b",
+        IntentCategory.OPEN_APP,
+        0.97,
+        _param_new_project,
+    ),
     RoutingRule("open_app_generic", r"\b(open|launch|start|run)\s+(?P<app>[\w\s.+]+?)\s*$", IntentCategory.OPEN_APP, 0.93, _param_open_app),
     RoutingRule("open_app_named", r"\b(open|launch|start|run)\s+(?P<app>chrome|notepad|calculator|spotify|discord|vscode|terminal|whatsapp|youtube|files|explorer|settings|file explorer)\b", IntentCategory.OPEN_APP, 0.91, _param_open_app),
     RoutingRule(
@@ -369,6 +435,7 @@ ROUTING_RULES: list[RoutingRule] = [
     RoutingRule("play_spotify", r"\b(play|start)\b.*\b(on|in)\s+spotify\b", IntentCategory.PLAY_MEDIA, 0.97, _param_play_music),
     RoutingRule("play_yt_music", r"\b(play|start)\b.*\b(on|in)\s+(youtube\s+music|yt\s+music)\b", IntentCategory.PLAY_MEDIA, 0.97, _param_play_music),
     RoutingRule("play_youtube", r"\b(play|start)\b.*\b(on|in)\s+youtube\b", IntentCategory.PLAY_MEDIA, 0.96, _param_play_music),
+    RoutingRule("play_garage", r"\bplay\s+garage\s+music\b", IntentCategory.PLAY_MEDIA, 0.96, _param_play_music),
     RoutingRule("play_some_music", r"\bplay\s+(some\s+)?music\b", IntentCategory.PLAY_MEDIA, 0.93, _param_play_music),
     RoutingRule("play_song", r"\b(play|start)\b(?!\s+(the\s+)?(next|previous|prev|last)\b).*?\b(music|song|track)\b", IntentCategory.PLAY_MEDIA, 0.94, _param_play_music),
     RoutingRule("play_title", r"\b(play|start)\b(?!\s+(the\s+)?(next|previous|prev|last)\b(\s+track)?)\s+[\w\s'\"-]{2,}", IntentCategory.PLAY_MEDIA, 0.90, _param_play_music),
@@ -400,7 +467,7 @@ ROUTING_RULES: list[RoutingRule] = [
     RoutingRule("news_read", r"\b(read|get|show)\s+(the\s+)?(news|headlines)\b", IntentCategory.NEWS, 0.94, _param_news),
     RoutingRule("news", r"\b(news|headlines|what'?s happening)\b", IntentCategory.NEWS, 0.91, _param_news),
     RoutingRule("smart_search", r"\b(smart search|look up)\b", IntentCategory.EXPLAIN, 0.86, _param_search),
-    RoutingRule("explain", r"\b(explain|what is|what's|define|tell me about|who is|who's)\b", IntentCategory.EXPLAIN, 0.87, _noop),
+    RoutingRule("explain", r"\b(explain|what is|what's|define|tell me about|who is|who's)\b", IntentCategory.EXPLAIN, 0.90, _noop),
     RoutingRule("summarise", r"\b(summarise|summarize|tldr|summary of)\b", IntentCategory.SUMMARISE, 0.88, _noop),
     RoutingRule("calculate_verb", r"\b(calculate|compute|math)\b", IntentCategory.CALCULATE, 0.90, _noop),
     RoutingRule("calculate_expr", r"\bwhat(?:'s| is)\s+[\d\s+\-*/().]+", IntentCategory.CALCULATE, 0.92, _param_calculate),
@@ -763,7 +830,9 @@ class IntentRouter:
 
             client = OllamaClient()
             if settings.GROQ_API_KEY:
-                return await client._groq_fallback(prompt, settings.LLM_MODEL, max_tokens=220)
+                from brain.model_router import FAST_MODEL
+
+                return await client._groq_fallback(prompt, FAST_MODEL, max_tokens=220)
             return await client.complete(prompt, model="llama3.2", max_tokens=220)
         except Exception as exc:
             logger.warning("LLM classify call failed: %s", exc)

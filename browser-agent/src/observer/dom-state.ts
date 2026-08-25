@@ -19,6 +19,8 @@ function detectPlatform(url: string): string {
   if (url.includes("music.youtube.com")) return "youtube_music";
   if (url.includes("youtube.com")) return "youtube";
   if (url.includes("google.com")) return "google";
+  if (url.includes("chatgpt.com") || url.includes("openai.com")) return "chatgpt";
+  if (url.includes("news.google.com")) return "news";
   return "web";
 }
 

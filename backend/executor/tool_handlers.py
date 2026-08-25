@@ -14,6 +14,7 @@ import logging
 import math
 import os
 import platform
+import re
 import subprocess
 import webbrowser
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterable, TypeAlias
@@ -135,6 +136,17 @@ class AsyncToolHandlers:
         app = raw or params.get("app", "")
         return await self._ctrl.open_app(app)
 
+    async def open_vscode_new_project(
+        self, raw: str, params: dict[str, Any], state: AgentState
+    ) -> ToolResult:
+        from executor.open_app import open_vscode_new_project
+
+        name = (raw or params.get("project_name") or "").strip()
+        ok, msg = await asyncio.to_thread(open_vscode_new_project, name)
+        if ok:
+            return {"status": "success", "message": msg}
+        return {"status": "failed", "error": msg}
+
     async def search_web(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
         query = raw or params.get("query", "")
         url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
@@ -199,12 +211,47 @@ class AsyncToolHandlers:
         return {"status": "failed", "error": error, "message": error}
 
     async def volume_set(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
+        from executor.local_music_player import (
+            adjust_volume,
+            get_playback_state,
+            get_volume,
+            set_volume,
+        )
+
         parts = raw.split(":")
         direction = parts[1] if len(parts) > 1 else params.get("direction", "set")
         try:
             level = int(parts[0]) if parts[0].isdigit() else params.get("level")
         except Exception:
             level = None
+
+        if get_playback_state().get("has_track"):
+            if direction == "up":
+                applied = await asyncio.to_thread(adjust_volume, 0.1)
+                return {"status": "success", "message": f"Music volume up ({int(applied * 100)}%)"}
+            if direction == "down":
+                applied = await asyncio.to_thread(adjust_volume, -0.1)
+                return {"status": "success", "message": f"Music volume down ({int(applied * 100)}%)"}
+            if direction == "reduce" and level is not None:
+                current = int(await asyncio.to_thread(get_volume) * 100)
+                target = max(0, current - int(level))
+                applied = await asyncio.to_thread(set_volume, target / 100.0)
+                return {
+                    "status": "success",
+                    "message": f"Music volume reduced to {int(applied * 100)}%",
+                }
+            if direction == "increase" and level is not None:
+                current = int(await asyncio.to_thread(get_volume) * 100)
+                target = min(100, current + int(level))
+                applied = await asyncio.to_thread(set_volume, target / 100.0)
+                return {
+                    "status": "success",
+                    "message": f"Music volume increased to {int(applied * 100)}%",
+                }
+            if level is not None:
+                applied = await asyncio.to_thread(set_volume, level / 100.0)
+                return {"status": "success", "message": f"Music volume set to {int(applied * 100)}%"}
+
         if platform.system() == "Windows":
             if direction == "up":
                 for _ in range(5):
@@ -276,6 +323,22 @@ class AsyncToolHandlers:
         return {"status": "success", "message": "Screen locked."}
 
     async def _browser_media(self, action: str) -> ToolResult:
+        from executor.spotify_control import is_spotify_running, next_track, play_pause, previous_track
+
+        if is_spotify_running():
+            if action == "play":
+                ok, msg = await asyncio.to_thread(play_pause)
+            elif action == "pause":
+                ok, msg = await asyncio.to_thread(play_pause)
+            elif action == "next":
+                ok, msg = await asyncio.to_thread(next_track)
+            elif action == "prev":
+                ok, msg = await asyncio.to_thread(previous_track)
+            else:
+                ok, msg = False, "Unknown media action"
+            if ok:
+                return {"status": "success", "message": msg}
+
         from executor.browser_agent import run_browser_recipe
 
         ok, msg = await run_browser_recipe(
@@ -291,29 +354,90 @@ class AsyncToolHandlers:
         return {"status": "success", "message": f"Media {action} via system keys (browser fallback)"}
 
     async def media_play(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
+        from executor.local_music_player import get_playback_state, resume
+        from services.companion_state import update_music_playback
+
+        if get_playback_state().get("has_track"):
+            ok, song = await asyncio.to_thread(resume)
+            if ok:
+                await update_music_playback(is_playing=True, song=song)
+                return {"status": "success", "message": "Resumed local playback."}
         return await self._browser_media("play")
 
     async def play_music(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
+        from executor.music_player import DEFAULT_BARE_PLATFORM, DEFAULT_PLATFORM, play_music
+
         parts = raw.split(":", 1)
         song = parts[0] if parts and parts[0] else params.get("song", "")
-        music_platform = parts[1] if len(parts) > 1 else params.get("platform", "spotify")
-        if not song and music_platform != "local":
-            from executor.music_player import DEFAULT_SONG
-
-            song = DEFAULT_SONG
-        from executor.music_player import play_music
+        music_platform = parts[1] if len(parts) > 1 else params.get("platform", "")
+        if not song:
+            music_platform = DEFAULT_BARE_PLATFORM
+            song = ""
+        elif not music_platform:
+            music_platform = params.get("platform") or DEFAULT_BARE_PLATFORM
         from brain.memory import save_memory
 
         success, message = await asyncio.to_thread(play_music, song, music_platform)
         if success:
             save_memory("last_song", song)
+            from services.companion_state import set_music_task
+
+            display_song = song.strip()
+            if not display_song:
+                from executor.local_music_player import get_playback_state
+
+                display_song = get_playback_state().get("song", "") or "Music"
+            elif music_platform != "local" and not display_song:
+                display_song = "Music"
+            await set_music_task(
+                song=display_song,
+                platform=music_platform,
+                is_playing=True,
+            )
         status = "success" if success else "failed"
         return {"status": status, "message": message, "error": None if success else message}
 
     async def media_pause(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
-        return await self._browser_media("pause")
+        from executor.local_music_player import get_playback_state, pause, stop
+        from executor.spotify_control import is_spotify_running, play_pause
+        from services.companion_state import set_idle_task, update_music_playback
+
+        intent = (state.get("cleaned_input") or raw or "").lower()
+        is_stop = bool(re.search(r"\bstop\b", intent)) and bool(
+            re.search(r"\b(music|song|track|playback|spotify)\b", intent) or intent.strip() == "stop"
+        )
+
+        if get_playback_state().get("has_track"):
+            if is_stop:
+                await asyncio.to_thread(stop)
+                await set_idle_task()
+                return {"status": "success", "message": "Stopped local playback."}
+            ok, song = await asyncio.to_thread(pause)
+            if ok:
+                await update_music_playback(is_playing=False, song=song)
+                return {"status": "success", "message": "Paused local playback."}
+
+        if is_spotify_running():
+            ok, msg = await asyncio.to_thread(play_pause)
+            if ok:
+                if is_stop:
+                    await set_idle_task()
+                return {"status": "success", "message": msg}
+
+        result = await self._browser_media("pause")
+        if is_stop and result.get("status") == "success":
+            await set_idle_task()
+        return result
 
     async def media_next(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
+        from executor.local_music_player import get_playback_state, next_track
+        from services.companion_state import update_music_playback
+
+        if get_playback_state().get("has_track"):
+            ok, song = await asyncio.to_thread(next_track)
+            if ok:
+                await update_music_playback(is_playing=True, song=song)
+                return {"status": "success", "message": f"Next track: {song}"}
         result = await self._browser_media("next")
         if result.get("status") == "success" and "fallback" not in result.get("message", ""):
             return result
@@ -321,6 +445,14 @@ class AsyncToolHandlers:
         return {"status": "success", "message": "Next track"}
 
     async def media_prev(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
+        from executor.local_music_player import get_playback_state, previous_track
+        from services.companion_state import update_music_playback
+
+        if get_playback_state().get("has_track"):
+            ok, song = await asyncio.to_thread(previous_track)
+            if ok:
+                await update_music_playback(is_playing=True, song=song)
+                return {"status": "success", "message": f"Previous track: {song}"}
         result = await self._browser_media("prev")
         if result.get("status") == "success" and "fallback" not in result.get("message", ""):
             return result
@@ -328,8 +460,18 @@ class AsyncToolHandlers:
         return {"status": "success", "message": "Previous track"}
 
     async def time_date(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
+        from services.companion_state import set_flash_task
+
         now = datetime.datetime.now()
+        lower = (raw or state.get("cleaned_input") or "").lower()
+        if "date" in lower or "day" in lower:
+            title = now.strftime("%A, %B %d")
+            detail = now.strftime("%Y")
+        else:
+            title = now.strftime("%I:%M %p")
+            detail = now.strftime("%A, %B %d")
         msg = now.strftime("It's %I:%M %p on %A, %B %d, %Y")
+        await set_flash_task(title, detail, seconds=5.0)
         return {"status": "success", "result": msg, "message": msg}
 
     async def timer_set(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
@@ -392,11 +534,17 @@ class LegacySyncHandlers:
     def build() -> dict[str, SyncHandler]:
         try:
             from executor.automation import read_news_headlines, smart_search
-            from executor.music_player import play_music, play_on_spotify, play_on_youtube, play_on_youtube_music
+            from executor.music_player import (
+                DEFAULT_BARE_PLATFORM,
+                play_music,
+                play_on_spotify,
+                play_on_youtube,
+                play_on_youtube_music,
+            )
             from executor.whatsapp_handler import send_whatsapp_message_sync as wa_send_message
             from executor.task_manager import task_manager
             from executor.mouse_controller import scroll, click, hotkey, move_to, type_text
-            from executor.open_app import open_app
+            from executor.open_app import open_app, open_vscode_new_project
         except ImportError:
             return {}
 
@@ -453,9 +601,23 @@ class LegacySyncHandlers:
                 return False, f"Screenshot failed: {exc}"
 
         def volume_helper(params: dict[str, Any]) -> SyncToolResult:
+            from executor.local_music_player import adjust_volume, get_playback_state, set_volume
+
             action = params.get("action", "mute").lower()
             amount = int(params.get("amount", 5))
+            level = params.get("level")
             try:
+                if get_playback_state().get("has_track"):
+                    if action == "up":
+                        applied = adjust_volume(0.1 * amount)
+                        return True, f"Music volume up ({int(applied * 100)}%)."
+                    if action == "down":
+                        applied = adjust_volume(-0.1 * amount)
+                        return True, f"Music volume down ({int(applied * 100)}%)."
+                    if level is not None:
+                        applied = set_volume(float(level) / 100.0)
+                        return True, f"Music volume set to {int(applied * 100)}%."
+
                 if action == "mute":
                     pyautogui.press("volumemute")
                 elif action == "up":
@@ -537,6 +699,9 @@ class LegacySyncHandlers:
 
         return {
             "open_app": lambda params: open_app(params.get("app", "notepad")),
+            "open_vscode_new_project": lambda params: open_vscode_new_project(
+                params.get("project_name", "")
+            ),
             "send_whatsapp": lambda params: _legacy_whatsapp_result(
                 wa_send_message(
                     params.get("contact") or params.get("name", ""),
@@ -548,7 +713,7 @@ class LegacySyncHandlers:
             "play_spotify_music": lambda params: play_on_spotify(params.get("song", "")),
             "play_music": lambda params: play_music(
                 params.get("song", ""),
-                params.get("platform", "spotify"),
+                params.get("platform") or DEFAULT_BARE_PLATFORM,
             ),
             "search_browser": search_browser_helper,
             "search_and_browse": search_and_browse_helper,

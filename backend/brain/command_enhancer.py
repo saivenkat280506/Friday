@@ -293,6 +293,16 @@ def _enrich_whatsapp(text: str, params: dict[str, Any], hints: list[str]) -> str
 
 def _enrich_media(text: str, params: dict[str, Any], hints: list[str]) -> str:
     """Infer platform defaults for music/media commands."""
+    from executor.music_player import parse_music_command
+
+    parsed = parse_music_command(text)
+    if parsed.get("platform") == "local":
+        params["platform"] = "local"
+        if "song" in parsed:
+            params["song"] = parsed.get("song") or ""
+        hints.append("platform_default=local (library)")
+        return text
+
     # Check if platform is explicitly stated
     platform_match = _PLATFORM_RE.search(text)
     if platform_match:
@@ -328,8 +338,15 @@ def _enrich_media(text: str, params: dict[str, Any], hints: list[str]) -> str:
             hints.append(f"media_query={query}")
 
     elif has_play:
-        # "play batman theme" → default to YouTube (widely available)
-        if not params.get("platform"):
+        if re.search(r"\bgarage\b", text, re.I):
+            params["platform"] = "local"
+            params.setdefault("song", "garage")
+            hints.append("platform_default=local (garage)")
+        elif not params.get("platform") and not re.fullmatch(
+            r"play\s+(some\s+)?music",
+            text.strip(),
+            re.I,
+        ):
             params["platform"] = "youtube"
             hints.append("platform_default=youtube (play command)")
 

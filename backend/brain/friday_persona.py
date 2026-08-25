@@ -7,8 +7,37 @@ replacement AI. Sharp, tactically alert, high-energy, Kerry Condon–style caden
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
+
+JOKE_REQUEST_PATTERN = re.compile(
+    r"(?:"
+    r"\b(?:tell|give)\s+(?:me\s+)?(?:a\s+)?joke\b|"
+    r"\b(?:say|hear)\s+(?:a\s+)?joke\b|"
+    r"\b(?:a\s+)?joke\s+please\b|"
+    r"\bsomething\s+funny\b|"
+    r"\bmake\s+me\s+laugh\b|"
+    r"\bi['']?m\s+your\s+joke\b|"
+    r"\byour\s+joke\b|"
+    r"\bjoke\b"
+    r")",
+    re.IGNORECASE,
+)
+
+FACTUAL_QUESTION_PATTERN = re.compile(
+    r"\b(what\s+is|what'?s|who\s+is|who'?s|explain|define|tell\s+me\s+about|how\s+does|how\s+do)\b",
+    re.IGNORECASE,
+)
+
+SCREEN_CONTEXT_PATTERN = re.compile(
+    r"\b("
+    r"screen|window|this\s+code|this\s+file|what'?s?\s+on|what\s+is\s+on|"
+    r"here|my\s+project|what\s+am\s+i|what\s+i'?m|working\s+on|"
+    r"vs\s+code|visual\s+studio|cursor|editor|on\s+my\s+screen"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 FRIDAY_CORE_IDENTITY = """You are F.R.I.D.A.Y. (Female Replacement Intelligent Digital Assistant Youth), Tony Stark's replacement AI for J.A.R.V.I.S.
@@ -95,6 +124,15 @@ FRIDAY_CONVERSATION_GUARDRAILS = """CONVERSATION BOUNDARIES (strictly enforce):
 - Never claim that a lookup, app action, or background task happened unless its real tool result is present in the context.
 - Do not end every response with "What else, Boss?". Use it only when it sounds natural after a completed multi-step task."""
 
+FRIDAY_QA_RULES = """FACTUAL Q&A MODE (what is / who is / explain / define):
+- Answer the question directly in two to five short spoken sentences.
+- Lead with a plain definition or direct answer. No theatrical warm-up.
+- Do NOT say "give me a sec", "scanning", "let me check", "pulling up notes", or similar unless a real tool result is in context.
+- Ignore the active window, open apps, and recent chat unless the user explicitly asks about them.
+- Do not mention Visual Studio Code, coding, or the user's current project unless they asked about it.
+- Do not use "knackered" unless reporting a genuine failure.
+- No jokes, tangents, headlines, or tool offers after the answer."""
+
 
 def time_of_day_label() -> str:
     hour = datetime.now().hour
@@ -118,6 +156,26 @@ def situational_opening_hint() -> str:
     return f"It is {tod} — weave time awareness into Opening only if it fits."
 
 
+def is_joke_request(text: str) -> bool:
+    """True for joke asks, including common STT mishears."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return False
+    if JOKE_REQUEST_PATTERN.search(cleaned):
+        return True
+    return cleaned.lower() in {"joke", "a joke", "your joke", "i'm your joke", "im your joke"}
+
+
+def is_factual_question(text: str) -> bool:
+    """True for explain / what-is style knowledge questions."""
+    return bool(FACTUAL_QUESTION_PATTERN.search((text or "").strip()))
+
+
+def is_screen_context_relevant(text: str) -> bool:
+    """True when the user is asking about on-screen or project context."""
+    return bool(SCREEN_CONTEXT_PATTERN.search((text or "").strip()))
+
+
 def is_simple_greeting(text: str) -> bool:
     """True for short greetings/thanks that should not trigger full briefings."""
     cleaned = (text or "").strip().lower().rstrip("?!., ")
@@ -137,13 +195,19 @@ def build_chat_system_prompt(
     user_name: str = "Boss",
     active_window: str = "",
     user_input: str = "",
+    intent: str = "",
 ) -> str:
     """Full system prompt for conversational LLM responses."""
+    factual_mode = intent == "explain" or is_factual_question(user_input)
+    if active_window and not is_screen_context_relevant(user_input):
+        active_window = ""
+
     context_parts = []
-    if memories:
+    if memories and not factual_mode:
         context_parts.append(f"Memory context:\n{memories}")
     if history:
-        context_parts.append(f"Recent conversation:\n{history}")
+        label = "Recent conversation (background only — answer the latest question):" if factual_mode else "Recent conversation:"
+        context_parts.append(f"{label}\n{history}")
     if active_window:
         context_parts.append(f"Active window: {active_window}")
     context_block = "\n\n".join(context_parts) if context_parts else "No extra context."
@@ -152,19 +216,40 @@ def build_chat_system_prompt(
     if is_simple_greeting(user_input):
         greeting_block = f"\n\n{FRIDAY_GREETING_RULES}"
 
-    return (
-        f"{FRIDAY_CORE_IDENTITY}\n\n"
-        f"{FRIDAY_PERSONALITY_RULES}\n\n"
-        f"{FRIDAY_CONVERSATION_GUARDRAILS}\n\n"
-        f"{FRIDAY_SPEECH_TEMPLATE}\n\n"
-        f"{FRIDAY_TOOL_RULES}\n\n"
-        f"{FRIDAY_SPEECH_EXAMPLES}\n\n"
-        f"User address: always call them Boss (never {user_name} unless they explicitly prefer another name).\n"
-        f"{situational_opening_hint()}"
-        f"{greeting_block}\n\n"
-        f"Stay strictly in character. Begin in full F.R.I.D.A.Y. voice.\n\n"
-        f"{context_block}"
+    qa_block = f"\n\n{FRIDAY_QA_RULES}" if factual_mode else ""
+
+    speech_block = FRIDAY_SPEECH_TEMPLATE
+    examples_block = FRIDAY_SPEECH_EXAMPLES
+    tool_block = FRIDAY_TOOL_RULES
+    if factual_mode:
+        speech_block = (
+            "Deliver a concise spoken answer. Short sentences for TTS. "
+            "No step labels, fake scans, or unrelated context."
+        )
+        examples_block = ""
+        tool_block = "No tools are running for this turn. Answer from general knowledge only."
+
+    parts = [
+        FRIDAY_CORE_IDENTITY,
+        FRIDAY_PERSONALITY_RULES,
+        FRIDAY_CONVERSATION_GUARDRAILS,
+        speech_block,
+        tool_block,
+    ]
+    if examples_block:
+        parts.append(examples_block)
+    parts.append(
+        f"User address: always call them Boss (never {user_name} unless they explicitly prefer another name)."
     )
+    if not factual_mode:
+        parts.append(situational_opening_hint().strip())
+    if greeting_block:
+        parts.append(greeting_block.strip())
+    if qa_block:
+        parts.append(qa_block.strip())
+    parts.append("Stay strictly in character. Begin in full F.R.I.D.A.Y. voice.")
+    parts.append(context_block)
+    return "\n\n".join(part for part in parts if part)
 
 
 def build_tool_system_prompt() -> str:

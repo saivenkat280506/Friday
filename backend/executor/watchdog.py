@@ -6,7 +6,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-_STUCK_TIMEOUT = 45.0  # seconds before considering processing stuck
+_STUCK_TIMEOUT = 50.0  # seconds before considering processing stuck
 _last_progress = time.time()
 _last_check_stuck = False
 
@@ -23,6 +23,7 @@ async def _force_reset():
         from tts.pocket_tts import stop_speech
         stop_speech()
         flags.is_processing = False
+        flags.is_listening = False
         flags.continuous_voice_mode = False
         flags.stop_listen_trigger = True
         await set_state(SystemState.IDLE)
@@ -37,7 +38,17 @@ async def _check_health():
     try:
         from services.runtime_state import flags
         elapsed = time.time() - _last_progress
-        if flags.is_processing and elapsed > _STUCK_TIMEOUT:
+        from services.runtime_state import get_state, SystemState
+
+        stuck_state = get_state() in (
+            SystemState.TRANSCRIBING,
+            SystemState.LISTENING,
+        )
+        if (
+            flags.is_processing
+            or flags.is_listening
+            or stuck_state
+        ) and elapsed > _STUCK_TIMEOUT:
             if not _last_check_stuck:
                 print(f"[Watchdog] Stuck detected — processing for {elapsed:.0f}s. Resetting.")
                 _last_check_stuck = True

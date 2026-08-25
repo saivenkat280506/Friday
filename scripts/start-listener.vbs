@@ -1,0 +1,1 @@
+' FRIDAY system F12 listener disabled — protects Fn/volume/brightness keys.

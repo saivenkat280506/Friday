@@ -4,11 +4,14 @@ open_app.py — Application Launcher
 Handles launching system applications using protocols, shell commands, and fallbacks.
 """
 
+import datetime
+import json
+import os
+import re
+import shutil
 import subprocess
 import webbrowser
-import os
-import shutil
-import json
+from pathlib import Path
 
 def get_app_path(app_name: str) -> str:
     """Helper to resolve the path of an application using registry, start menu, or PATH."""
@@ -94,6 +97,78 @@ def get_app_path(app_name: str) -> str:
         return exe_path
         
     return name_lower
+
+def _resolve_vscode_exe() -> str | None:
+    """Resolve the VS Code CLI / Code.exe path."""
+    path = get_app_path("code")
+    if path and os.path.isfile(path):
+        return path
+    which = shutil.which("code")
+    if which:
+        return which
+    local = os.path.join(
+        os.environ.get("LOCALAPPDATA", ""),
+        "Programs",
+        "Microsoft VS Code",
+        "Code.exe",
+    )
+    if os.path.isfile(local):
+        return local
+    return None
+
+
+def _fresh_project_dir(project_name: str = "") -> Path:
+    """Create a new empty project folder under ~/Documents/FRIDAY-Projects."""
+    base = Path.home() / "Documents" / "FRIDAY-Projects"
+    base.mkdir(parents=True, exist_ok=True)
+
+    if project_name:
+        safe = re.sub(r"[^\w\-]+", "-", project_name.strip()).strip("-")[:40] or "new-project"
+        folder = base / safe
+    else:
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        folder = base / f"new-project-{stamp}"
+
+    if folder.exists():
+        suffix = 2
+        stem = folder.name
+        while (base / f"{stem}-{suffix}").exists():
+            suffix += 1
+        folder = base / f"{stem}-{suffix}"
+
+    folder.mkdir(parents=True, exist_ok=True)
+    readme = folder / "README.md"
+    if not readme.exists():
+        readme.write_text(f"# {folder.name}\n\nFresh FRIDAY workspace.\n", encoding="utf-8")
+    return folder
+
+
+def open_vscode_new_project(project_name: str = "") -> tuple[bool, str]:
+    """
+    Open VS Code in a brand-new window with a fresh empty project folder.
+    Does not restore the last workspace or reopen an existing repo.
+    """
+    exe = _resolve_vscode_exe()
+    if not exe:
+        return False, "VS Code not found. Install it or add the 'code' command to PATH."
+
+    folder = _fresh_project_dir(project_name)
+    try:
+        subprocess.Popen(
+            [exe, "--new-window", str(folder.resolve())],
+            shell=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        save_app_path_preference("code", exe)
+        return (
+            True,
+            f"Opened VS Code with a fresh workspace: {folder.name} in Documents/FRIDAY-Projects.",
+        )
+    except Exception as exc:
+        return False, f"failed to open VS Code: {exc}"
+
 
 def save_app_path_preference(app_name: str, path: str):
     """Save resolved app path to preference memory."""

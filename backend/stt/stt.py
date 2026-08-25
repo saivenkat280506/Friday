@@ -10,16 +10,21 @@ Layers:
 3. Queue & Worker: Pushes partial updates off-thread and handles transcription.
 """
 
+import io
+import math
+import os
+import queue
+import threading
+import time
+import wave
+
 import numpy as np
 import sounddevice as sd
 import webrtcvad
 from faster_whisper import WhisperModel
-import queue
-import time
-import math
-import threading
-import os
+
 from config import settings
+from stt.audio_prep import release_mic_blockers
 
 # ── Configuration ────────────────────────────────────────────────────────────
 MODEL_SIZE    = settings.STT_MODEL
@@ -27,16 +32,219 @@ SAMPLE_RATE   = 16000
 FRAME_DURATION= 30       # ms 
 FRAME_SIZE    = int(SAMPLE_RATE * FRAME_DURATION / 1000) * 2 # 960 bytes (16-bit PCM)
 COMPUTE_TYPE  = settings.STT_COMPUTE_TYPE
-VAD_MODE      = 3        # 0-3 (1=mild, 3=aggressive)
+VAD_MODE      = max(0, min(3, settings.STT_VAD_MODE))
+SPEECH_RMS    = settings.STT_SPEECH_RMS
+SPEECH_SNR_MULT = max(1.5, float(settings.STT_SPEECH_SNR_MULT))
+NOISE_FLOOR_ALPHA = 0.05
 
-# Timers
-SILENCE_LIMIT_FRAMES    = 50   # 50 * 30ms = 1.5s of silence ends the command
-INITIAL_TIMEOUT_FRAMES  = 150  # 150 * 30ms = 4.5s timeout if user never speaks
-PARTIAL_INTERVAL        = 0.5   # Emit partial every 0.5s
+# Timers (30ms frames)
+SILENCE_LIMIT_FRAMES = max(
+    10,
+    int(round(settings.STT_SILENCE_TIMEOUT_S * 1000 / FRAME_DURATION)),
+)
+PRE_SPEECH_TIMEOUT_FRAMES = max(
+    SILENCE_LIMIT_FRAMES * 2,
+    int(round(settings.STT_PRE_SPEECH_TIMEOUT_S * 1000 / FRAME_DURATION)),
+)
+MIN_SPEECH_FRAMES = 3    # ~90ms sustained speech before arming capture
+CALIBRATION_FRAMES = 12  # ~360ms ambient noise calibration at mic open
+PARTIAL_INTERVAL  = 0.55  # Live companion preview — local tiny model only
+PARTIAL_TAIL_MS   = 2200  # Only transcribe recent audio for live preview
+TRANSCRIBE_TIMEOUT_S    = 18.0
 
-# ── Groq Whisper Integration ─────────────────────────────────────────────────
-# ── Shared Model (loaded once) ────────────────────────────────────────────────
+_groq_client = None
 _model: WhisperModel | None = None
+_partial_model: WhisperModel | None = None
+
+
+def _groq_api_key() -> str:
+    return (settings.GROQ_API_KEY or settings.STT_API_KEY or "").strip()
+
+
+def _use_groq_stt() -> bool:
+    provider = (settings.STT_PROVIDER or "auto").lower()
+    if provider == "local":
+        return False
+    if provider == "groq":
+        return bool(_groq_api_key())
+    return bool(_groq_api_key())
+
+
+def _get_groq_client():
+    global _groq_client
+    key = _groq_api_key()
+    if not key:
+        return None
+    if _groq_client is None:
+        from groq import Groq
+
+        _groq_client = Groq(api_key=key)
+    return _groq_client
+
+def _device_supports_capture(device_id: int) -> bool:
+    try:
+        sd.check_input_settings(device=device_id, samplerate=SAMPLE_RATE, channels=1)
+        return True
+    except Exception:
+        return False
+
+
+def _hostapi_indices() -> dict[str, int]:
+    """Map PortAudio host API names to indices (e.g. Windows WASAPI)."""
+    out: dict[str, int] = {}
+    try:
+        for idx, api in enumerate(sd.query_hostapis()):
+            out[(api.get("name") or "").lower()] = idx
+    except Exception:
+        pass
+    return out
+
+
+def _resolve_input_device() -> int | None:
+    """Pick the microphone device for capture (-1 = OS default, with Realtek fallbacks)."""
+    configured = settings.STT_INPUT_DEVICE
+    if configured >= 0:
+        return configured
+
+    hostapis = _hostapi_indices()
+    wasapi_idx = hostapis.get("windows wasapi")
+    ds_idx = hostapis.get("windows directsound")
+    wdm_idx = hostapis.get("windows wdm-ks")
+
+    wasapi_arrays: list[int] = []
+    wasapi_mics: list[int] = []
+    ds_arrays: list[int] = []
+    ds_mics: list[int] = []
+    mme_mics: list[int] = []
+    fallback: list[int] = []
+
+    try:
+        default = sd.default.device[0]
+        if default is not None and int(default) >= 0:
+            fallback.append(int(default))
+    except Exception:
+        pass
+
+    try:
+        for idx, dev in enumerate(sd.query_devices()):
+            name = (dev.get("name") or "").lower()
+            if dev.get("max_input_channels", 0) < 1:
+                continue
+            if any(skip in name for skip in ("stereo mix", "pc speaker", "output", "mapper")):
+                continue
+            hostapi = dev.get("hostapi")
+            if wdm_idx is not None and hostapi == wdm_idx:
+                continue
+
+            is_array = "microphone array" in name
+            is_mic = is_array or "microphone" in name or " mic" in name
+
+            if wasapi_idx is not None and hostapi == wasapi_idx:
+                if is_array:
+                    wasapi_arrays.append(idx)
+                elif is_mic:
+                    wasapi_mics.append(idx)
+            elif ds_idx is not None and hostapi == ds_idx:
+                if is_array:
+                    ds_arrays.append(idx)
+                elif is_mic:
+                    ds_mics.append(idx)
+            elif is_mic:
+                mme_mics.append(idx)
+    except Exception:
+        pass
+
+    candidates = (
+        wasapi_arrays
+        + wasapi_mics
+        + ds_arrays
+        + ds_mics
+        + mme_mics
+        + fallback
+    )
+    seen: set[int] = set()
+    for idx in candidates:
+        if idx in seen:
+            continue
+        seen.add(idx)
+        if _device_supports_capture(idx):
+            try:
+                dev = sd.query_devices(idx)
+                api_name = sd.query_hostapis()[dev["hostapi"]]["name"]
+                print(f"[STT] Selected input device {idx}: {dev['name']} ({api_name})")
+            except Exception:
+                pass
+            return idx
+    return None
+
+
+def _frame_rms(frame_array: np.ndarray) -> float:
+    return float(np.sqrt(np.mean(frame_array.astype(np.float32) ** 2)))
+
+
+def _frame_is_speech(
+    vad: webrtcvad.Vad,
+    frame: bytes,
+    frame_array: np.ndarray,
+    noise_floor: list[float],
+) -> bool:
+    """WebRTC VAD plus adaptive RMS gate — rejects distant/background voices."""
+    rms = _frame_rms(frame_array)
+    threshold = max(float(SPEECH_RMS), noise_floor[0] * SPEECH_SNR_MULT)
+    vad_says = vad.is_speech(frame, SAMPLE_RATE)
+    # WebRTC VAD + adaptive RMS; soft floor so laptop array mics still arm.
+    is_speech = vad_says and rms >= threshold * 0.32
+    if not is_speech:
+        noise_floor[0] = noise_floor[0] * (1.0 - NOISE_FLOOR_ALPHA) + rms * NOISE_FLOOR_ALPHA
+    return is_speech
+
+
+def _get_partial_model() -> WhisperModel | None:
+    """Tiny on-device model for live partials — never hits Groq (avoids 429 + lag)."""
+    global _partial_model
+    if _partial_model is None:
+        try:
+            name = getattr(settings, "STT_PARTIAL_MODEL", "tiny.en") or "tiny.en"
+            _partial_model = WhisperModel(
+                name,
+                device=settings.STT_DEVICE,
+                compute_type=COMPUTE_TYPE,
+                cpu_threads=2,
+            )
+        except Exception as exc:
+            print(f"[STT] Partial model load failed: {exc}")
+            return None
+    return _partial_model
+
+
+def transcribe_partial_local(pcm_bytes: bytes) -> str:
+    """Fast local preview transcript for companion UI only."""
+    if len(pcm_bytes) < FRAME_SIZE * 6:
+        return ""
+    model = _get_partial_model()
+    if model is None:
+        return ""
+    try:
+        audio_array = (
+            np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        )
+        segments, _ = model.transcribe(
+            audio_array,
+            beam_size=1,
+            language="en",
+            vad_filter=False,
+            condition_on_previous_text=False,
+        )
+        return " ".join(seg.text.strip() for seg in segments).strip()
+    except Exception:
+        return ""
+
+
+def warm_stt_models() -> None:
+    """Pre-load partial + final models so the first companion utterance is not delayed."""
+    _get_partial_model()
+    _get_model()
+
 
 def _get_model() -> WhisperModel | None:
     """Load the on-device STT model lazily so startup stays responsive."""
@@ -59,6 +267,74 @@ def _get_model() -> WhisperModel | None:
     return _model
 
 
+def _is_meaningful_transcript(text: str) -> bool:
+    cleaned = (text or "").strip().strip("\"'`")
+    if len(cleaned) < 2:
+        return False
+    if cleaned.lower() in {".", ",", "you", "thank you.", "thanks for watching."}:
+        return False
+    return True
+
+
+def transcribe_groq(pcm_bytes: bytes) -> str:
+    """Transcribe via Groq Whisper (same API key as LLM). Retries on rate limits."""
+    if not pcm_bytes or len(pcm_bytes) < FRAME_SIZE * 12:
+        return ""
+    client = _get_groq_client()
+    if client is None:
+        return ""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes(pcm_bytes)
+    audio_data = buf.getvalue()
+
+    models = ("whisper-large-v3-turbo", "whisper-large-v3")
+    last_exc: Exception | None = None
+    for model_name in models:
+        for attempt in range(2):
+            try:
+                response = client.audio.transcriptions.create(
+                    file=("speech.wav", audio_data),
+                    model=model_name,
+                    language="en",
+                    prompt="FRIDAY, Friday, WhatsApp, Chrome, Spotify, YouTube, play music, headlines.",
+                    temperature=0.0,
+                )
+                text = (response.text or "").strip()
+                if _is_meaningful_transcript(text):
+                    return text
+                break
+            except Exception as exc:
+                last_exc = exc
+                err = str(exc).lower()
+                if "429" in err or "rate" in err:
+                    print("[STT] Groq rate limited — falling back to local STT")
+                    return ""
+                if attempt < 1:
+                    time.sleep(0.6)
+                    continue
+                print(f"[STT] Groq {model_name} failed: {exc}")
+                break
+    if last_exc:
+        print(f"[STT] Groq transcription failed after retries: {last_exc}")
+    return ""
+
+
+def transcribe_audio(pcm_bytes: bytes, *, prefer_groq: bool = False) -> str:
+    """Groq-first when configured, with local Faster-Whisper fallback."""
+    if not pcm_bytes:
+        return ""
+    if prefer_groq or _use_groq_stt():
+        text = transcribe_groq(pcm_bytes)
+        if _is_meaningful_transcript(text):
+            return text
+    local = transcribe_local(pcm_bytes)
+    return local if _is_meaningful_transcript(local) else ""
+
+
 def transcribe_local(pcm_bytes: bytes) -> str:
     """Transcribe VAD-gated PCM locally with an accuracy-oriented prompt."""
     if not pcm_bytes:
@@ -79,11 +355,42 @@ def transcribe_local(pcm_bytes: bytes) -> str:
     )
     return " ".join(segment.text.strip() for segment in segments).strip()
 
+_last_mic_ok = True
+_last_had_speech = False
+
+
+def last_listen_mic_ok() -> bool:
+    """Whether the most recent listen_stream opened the mic successfully."""
+    return _last_mic_ok
+
+
+def last_listen_had_speech() -> bool:
+    """Whether near-field speech was detected during the most recent listen."""
+    return _last_had_speech
+
+
 def listen_stream(partial_cb=None, stop_event=None) -> str:
     """
     Blocks while listening. Captures chunks, pushes them to a worker thread.
     Automatically returns the final string when SILENCE_LIMIT_FRAMES is crossed.
     """
+    global _last_mic_ok, _last_had_speech
+    _last_mic_ok = True
+    _last_had_speech = False
+
+    def _emit_partial(text: str, countdown: int | None = None, phase: str | None = None) -> None:
+        if not partial_cb:
+            return
+        try:
+            if phase is not None:
+                partial_cb(text, countdown=countdown, phase=phase)
+            else:
+                partial_cb(text, countdown=countdown)
+        except TypeError:
+            partial_cb(text, countdown=countdown)
+        except Exception:
+            pass
+
     vad = webrtcvad.Vad(VAD_MODE)
     audio_queue = queue.Queue()
     
@@ -91,6 +398,14 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
     final_result = [""]
     last_ui_text = [""]
     
+    partial_tail_frames = max(8, int(PARTIAL_TAIL_MS / FRAME_DURATION))
+
+    def _partial_audio_tail(pcm: bytes) -> bytes:
+        frame_bytes = FRAME_SIZE
+        if len(pcm) <= partial_tail_frames * frame_bytes:
+            return pcm
+        return pcm[-partial_tail_frames * frame_bytes :]
+
     # ── STT Worker Thread ──────────────────────────────────────────────────
     def stt_worker():
         while True:
@@ -120,14 +435,22 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
             audio_bytes = item["data"]
             
             try:
-                # 1. Local transcription: unlimited use and microphone privacy.
-                text = transcribe_local(audio_bytes)
-                
-                # 2. Retry only if an initial local pass returned no transcript.
-                if not text:
+                if item["type"] == "partial":
+                    if done_event.is_set():
+                        continue
+                    tail = _partial_audio_tail(audio_bytes)
+                    if len(tail) >= FRAME_SIZE * 4:
+                        text = transcribe_partial_local(tail)
+                        if text:
+                            last_ui_text[0] = text
+                    current_countdown = item.get("countdown")
+                    _emit_partial(last_ui_text[0], countdown=current_countdown)
+                    continue
+
+                text = transcribe_audio(audio_bytes, prefer_groq=True)
+                if not text and not _use_groq_stt():
                     model = _get_model()
                     if model:
-                        print("[STT Engine] Groq returned empty — falling back to local Whisper...")
                         audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
                         segments, _ = model.transcribe(
                             audio_array,
@@ -135,23 +458,11 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
                             language="en",
                             initial_prompt="F.R.I.D.A.Y., Friday, WhatsApp, Chrome, Laxman, Vaasavi, aka, message.",
                             vad_filter=True,
-                            vad_parameters=dict(min_silence_duration_ms=400)
+                            vad_parameters=dict(min_silence_duration_ms=400),
                         )
-                        text = " ".join([seg.text for seg in segments]).strip()
-                    else:
-                        text = ""
-                
-                if item["type"] == "partial":
-                    # Always call partial_cb if we have countdown or new text
-                    current_countdown = item.get("countdown")
-                    if partial_cb and (text != last_ui_text[0] or current_countdown is not None):
-                        try:
-                            partial_cb(text, countdown=current_countdown)
-                            if text:
-                                last_ui_text[0] = text
-                        except:
-                            pass
-                elif item["type"] == "final":
+                        text = " ".join(seg.text for seg in segments).strip()
+
+                if item["type"] == "final":
                     # If the final transcribe (often padded with silence) returns empty, 
                     # fallback to the last valid partial text we generated.
                     final_result[0] = text if text.strip() else last_ui_text[0]
@@ -167,24 +478,59 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
     worker_thread = threading.Thread(target=stt_worker, daemon=True)
     worker_thread.start()
 
-    # ── sounddevice Mic Stream ────────────────────────────────────────────
-    stream = None
+    release_mic_blockers()
+    time.sleep(0.15)
+
+    # ── sounddevice Mic Stream (callback — blocking read fails on Windows WDM-KS) ─
+    frame_queue: queue.Queue = queue.Queue(maxsize=60)
+    input_device = _resolve_input_device()
+
+    def audio_callback(indata: np.ndarray, _frames: int, _cb_time, _status) -> None:
+        if done_event.is_set():
+            return
+        if frame_queue.full():
+            try:
+                frame_queue.get_nowait()
+            except queue.Empty:
+                pass
+        frame_queue.put_nowait(indata.copy())
+
     try:
-        stream = sd.InputStream(
+        stream_kwargs = dict(
             samplerate=SAMPLE_RATE,
             channels=1,
             dtype="int16",
-            blocksize=FRAME_SIZE // 2
+            blocksize=FRAME_SIZE // 2,
+            latency="high",
+            callback=audio_callback,
         )
-        with stream:
+        if input_device is not None:
+            stream_kwargs["device"] = input_device
+        device_label = (
+            sd.query_devices(input_device)["name"]
+            if input_device is not None
+            else "default"
+        )
+        stt_backend = "groq" if _use_groq_stt() else "local"
+        print(
+            f"[STT Pipeline] Stream active on '{device_label}'. "
+            f"VAD mode={VAD_MODE}, RMS gate={SPEECH_RMS}, "
+            f"silence={SILENCE_LIMIT_FRAMES * FRAME_DURATION}ms, STT={stt_backend}."
+        )
+        with sd.InputStream(**stream_kwargs):
             buffer = []
             silence_counter = 0
+            speech_streak = 0
+            elapsed_frames = 0
+            calibration_frames = 0
             last_partial_time = time.time()
             has_spoken = False
-
-            print("[STT Pipeline] Stream active. VAD gating is ON.")
+            speech_notified = False
+            noise_floor = [max(25.0, SPEECH_RMS * 0.25)]
+            calibration_rms: list[float] = []
 
             while not done_event.is_set():
+                elapsed_frames += 1
                 # Check external UI abort
                 if stop_event and stop_event.is_set():
                     print("[STT Pipeline] External stop trigger intercepted.")
@@ -192,29 +538,59 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
                     break
 
                 try:
-                    frame_array, overflowed = stream.read(FRAME_SIZE // 2)
-                    frame = frame_array.tobytes()
-                except Exception as e:
-                    print(f"[STT Pipeline] Mic read error: {e}")
+                    frame_array = frame_queue.get(timeout=0.15)
+                except queue.Empty:
                     continue
-                
-                is_speech = vad.is_speech(frame, SAMPLE_RATE)
+
+                frame_array = frame_array.flatten()
+                frame = frame_array.tobytes()
+
+                frame_rms = _frame_rms(frame_array)
+                if calibration_frames < CALIBRATION_FRAMES:
+                    calibration_frames += 1
+                    calibration_rms.append(frame_rms)
+                    if calibration_frames == CALIBRATION_FRAMES and calibration_rms:
+                        ambient = float(np.median(calibration_rms))
+                        noise_floor[0] = max(20.0, min(ambient, SPEECH_RMS * 0.85))
+                        print(
+                            f"[STT Pipeline] Mic calibrated — noise floor={noise_floor[0]:.1f}, "
+                            f"gate={max(SPEECH_RMS, noise_floor[0] * SPEECH_SNR_MULT):.1f}"
+                        )
+                        _emit_partial("", phase="open")
+                    continue
+
+                is_speech = _frame_is_speech(vad, frame, frame_array, noise_floor)
 
                 if is_speech:
-                    buffer.append(frame)
+                    speech_streak += 1
                     silence_counter = 0
-                    has_spoken = True
+                    if speech_streak >= MIN_SPEECH_FRAMES:
+                        if not speech_notified:
+                            speech_notified = True
+                            _last_had_speech = True
+                            _emit_partial("", phase="hearing")
+                        has_spoken = True
+                    if has_spoken:
+                        buffer.append(frame)
                 else:
+                    speech_streak = 0
                     silence_counter += 1
                     if has_spoken:
                         buffer.append(frame) # Keep silence internally so Whisper maintains flow context
+
+                # Early preview while waiting for the user to speak.
+                if not has_spoken and is_speech and speech_streak >= 1:
+                    now = time.time()
+                    if now - last_partial_time > PARTIAL_INTERVAL * 1.5:
+                        _emit_partial("", phase="hearing")
+                        last_partial_time = now
 
                 # State Logic
                 if has_spoken:
                     now = time.time()
                     total_sil_limit = (SILENCE_LIMIT_FRAMES * FRAME_DURATION) / 1000.0
                     current_sil_s = (silence_counter * FRAME_DURATION) / 1000.0
-                    countdown_val = int(math.ceil(total_sil_limit - current_sil_s)) if current_sil_s > 0.5 and current_sil_s <= total_sil_limit else None
+                    countdown_val = int(math.ceil(total_sil_limit - current_sil_s)) if current_sil_s > 0.2 and current_sil_s <= total_sil_limit else None
                     
                     last_countdown = getattr(listen_stream, "_last_cd", None)
                     
@@ -224,24 +600,22 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
                         last_partial_time = now
                         listen_stream._last_cd = countdown_val
 
-                    # 2. Silence Cutoff or Absolute duration limit
+                    # End utterance after ~1s silence once the user has spoken.
                     if silence_counter > SILENCE_LIMIT_FRAMES or len(buffer) >= 600:
                         print(f"[STT Pipeline] End of Speech detected ({silence_counter * FRAME_DURATION}ms). Buffer length: {len(buffer)}")
-                        if partial_cb:
-                            try:
-                                partial_cb(last_ui_text[0], countdown=0)
-                            except:
-                                pass
+                        _emit_partial(last_ui_text[0], countdown=0)
                         audio_queue.put({"type": "final", "data": b"".join(buffer)})
                         break
                 else:
-                    # User never spoke -> Timeout
-                    if silence_counter > INITIAL_TIMEOUT_FRAMES:
-                        print(f"[STT Pipeline] Initial timeout. No speech detected.")
+                    # Keep mic open until the user speaks or the pre-speech window expires.
+                    active_frames = elapsed_frames - CALIBRATION_FRAMES
+                    if active_frames > PRE_SPEECH_TIMEOUT_FRAMES:
+                        print("[STT Pipeline] Pre-speech timeout — no near-field speech detected.")
                         audio_queue.put({"type": "final", "data": b""})
                         break
 
     except Exception as e:
+        _last_mic_ok = False
         print(f"[STT Pipeline] Mic Stream Crash: {e}")
         audio_queue.put({"type": "quit"})
 
@@ -250,7 +624,7 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
 
     # ── Cleanup ───────────────────────────────────────────────────────────
     # Wait for the worker to translate the final assembled chunk
-    done_event.wait(timeout=5.0)
+    done_event.wait(timeout=TRANSCRIBE_TIMEOUT_S)
     audio_queue.put({"type": "quit"})
     worker_thread.join(timeout=1.0)
 
