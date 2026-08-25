@@ -47,33 +47,64 @@ _CALL_END_PHRASES = (
 )
 
 
-async def _speak_in_background(text: str, *, is_smart: bool, response_id: str) -> None:
+async def _speak_and_wait(text: str, *, is_smart: bool, response_id: str) -> None:
+    """Play TTS to completion before the mic re-opens (companion voice loop)."""
     from executor.watchdog import touch_progress
     from tts.hybrid_tts import speak_hybrid as speak
-    from tts.pocket_tts import stop_speech
+
+    if flags.stop_listen_trigger or stop_event.is_set():
+        return
 
     touch_progress()
+    flags.tts_spoke_this_turn = False
     try:
-        stop_speech()
+        if flags.stop_listen_trigger or stop_event.is_set():
+            return
         await set_state(SystemState.SPEAKING)
-        await speak(text, is_smart=is_smart, response_id=response_id)
+        await ws_manager.broadcast_json({"type": "tts_started"})
+        ok = await speak(text, is_smart=is_smart, response_id=response_id)
+        if not ok and len(text.strip()) > 120:
+            short = text.strip()[:120].rsplit(" ", 1)[0] + "."
+            ok = await speak(short, is_smart=False, response_id=response_id)
+        if not ok:
+            ok = await speak(
+                "Sorry, I had trouble speaking that.",
+                is_smart=False,
+                response_id=response_id,
+            )
+        flags.tts_spoke_this_turn = ok
         touch_progress()
     except Exception as exc:
-        logger.error("Background TTS error: %s", exc)
+        logger.error("TTS error: %s", exc)
+        flags.tts_spoke_this_turn = False
     finally:
-        await set_state(SystemState.IDLE)
+        # Companion voice_loop schedules the next listen after TTS fully ends.
+        if not flags.continuous_voice_mode or flags.stop_listen_trigger:
+            await set_state(SystemState.IDLE)
 
 
-def _should_skip_request(command_text: str, request_id: str | None, now: float) -> bool:
+async def _speak_in_background(text: str, *, is_smart: bool, response_id: str) -> None:
+    asyncio.create_task(_speak_and_wait(text, is_smart=is_smart, response_id=response_id))
+
+
+def _should_skip_request(
+    command_text: str,
+    request_id: str | None,
+    now: float,
+    *,
+    voice: bool = False,
+) -> bool:
     if not command_text.strip():
         return True
     if command_text == flags.last_user_input and now - flags.last_request_time < 3:
         return True
     if request_id and request_id in flags.processed_ids:
         return True
-    if now - flags.last_response_time < 2:
+    # Voice sessions must accept the next utterance right after FRIDAY speaks.
+    if not voice and now - flags.last_response_time < 2:
         return True
-    if flags.is_processing:
+    # Voice loop already waits for the prior turn; don't silently drop here.
+    if flags.is_processing and not voice:
         return True
     return False
 
@@ -137,12 +168,11 @@ async def _stream_graph_response(
                 ws_manager.broadcast_json({"type": "tts_started"}), loop
             )
 
-    if voice:
-        from brain.settings import is_muted
+    from brain.settings import is_muted
 
-        if not is_muted():
-            tts_buffer = StreamingTtsBuffer(on_first_sentence=_on_first_sentence)
-            await asyncio.to_thread(tts_buffer.start)
+    if not is_muted():
+        tts_buffer = StreamingTtsBuffer(on_first_sentence=_on_first_sentence)
+        await asyncio.to_thread(tts_buffer.start)
 
     try:
         graph_task = asyncio.create_task(
@@ -155,6 +185,15 @@ async def _stream_graph_response(
         )
 
         while not graph_task.done() or not queue.empty():
+            if flags.stop_listen_trigger or stop_event.is_set():
+                if not graph_task.done():
+                    graph_task.cancel()
+                if tts_buffer and tts_buffer.active:
+                    tts_buffer.cancel()
+                from tts.pocket_tts import stop_speech
+
+                stop_speech()
+                break
             try:
                 chunk = await asyncio.wait_for(queue.get(), timeout=0.02)
             except asyncio.TimeoutError:
@@ -167,7 +206,13 @@ async def _stream_graph_response(
             yield f"data: {json.dumps({'text': chunk, 'model': 'groq', 'done': False})}\n\n"
             queue.task_done()
 
-        graph_result = await graph_task
+        if graph_task.cancelled():
+            graph_result = {"response_text": "", "raw_state": {}}
+        else:
+            try:
+                graph_result = await graph_task
+            except asyncio.CancelledError:
+                graph_result = {"response_text": "", "raw_state": {}}
         final_response = graph_result.get("response_text", _get_builder().error())
         touch_progress()
     finally:
@@ -183,22 +228,52 @@ async def _stream_graph_response(
         if voice:
             raw_state = graph_result.get("raw_state") or {}
             tts_text = (raw_state.get("tts_text") or final_response or "").strip()
-            if tts_buffer and tts_buffer.active:
+            if raw_state.get("intro_audio"):
+                from executor.intro_audio import play_friday_intro
+
+                await set_state(SystemState.SPEAKING)
+                await ws_manager.broadcast_json({"type": "tts_started"})
+                ok, _ = await asyncio.to_thread(play_friday_intro)
+                if not ok:
+                    fallback = (raw_state.get("final_response") or final_response or "").strip()
+                    if fallback:
+                        await _speak_and_wait(
+                            fallback,
+                            is_smart=False,
+                            response_id=response_id,
+                        )
+                    else:
+                        if flags.continuous_voice_mode and not flags.stop_listen_trigger:
+                            await set_state(SystemState.IDLE_LISTENING)
+                        else:
+                            await set_state(SystemState.IDLE)
+                else:
+                    if flags.continuous_voice_mode and not flags.stop_listen_trigger:
+                        await set_state(SystemState.IDLE_LISTENING)
+                    else:
+                        await set_state(SystemState.IDLE)
+            elif tts_buffer and tts_buffer.active:
                 if tts_text and not streamed_any:
                     tts_buffer.feed(tts_text)
                 await asyncio.to_thread(tts_buffer.finish)
-                asyncio.create_task(_set_idle_after_stream())
+                await _set_idle_after_stream()
             elif tts_text:
                 logger.info("Speaking response (%d chars)", len(tts_text))
-                asyncio.create_task(
-                    _speak_in_background(
-                        tts_text,
-                        is_smart=False,
-                        response_id=response_id,
-                    )
+                await _speak_and_wait(
+                    tts_text,
+                    is_smart=False,
+                    response_id=response_id,
                 )
             else:
-                await set_state(SystemState.IDLE)
+                if flags.continuous_voice_mode and not flags.stop_listen_trigger:
+                    await set_state(SystemState.IDLE_LISTENING)
+                else:
+                    await set_state(SystemState.IDLE)
+        elif (graph_result.get("raw_state") or {}).get("intro_audio"):
+            from executor.intro_audio import play_friday_intro
+
+            await asyncio.to_thread(play_friday_intro)
+            await set_state(SystemState.IDLE)
         else:
             await set_state(SystemState.IDLE)
 
@@ -209,8 +284,14 @@ async def _stream_graph_response(
 async def _set_idle_after_stream() -> None:
     from tts.hybrid_tts import wait_for_streaming_tts_idle
 
+    if flags.stop_listen_trigger or stop_event.is_set():
+        await set_state(SystemState.IDLE)
+        return
     await wait_for_streaming_tts_idle()
-    await set_state(SystemState.IDLE)
+    if flags.continuous_voice_mode and not flags.stop_listen_trigger:
+        await set_state(SystemState.IDLE_LISTENING)
+    else:
+        await set_state(SystemState.IDLE)
 
 
 async def process_command(
@@ -223,15 +304,16 @@ async def process_command(
     now = time.time()
     logger.info("Processing command: %r (id=%s)", command_text, request_id)
 
-    if _should_skip_request(command_text, request_id, now):
+    if _should_skip_request(command_text, request_id, now, voice=voice):
         yield f"data: {json.dumps({'done': True})}\n\n"
         return
 
     with state_lock:
-        if _should_skip_request(command_text, request_id, now):
+        if _should_skip_request(command_text, request_id, now, voice=voice):
             yield f"data: {json.dumps({'done': True})}\n\n"
             return
         flags.is_processing = True
+        flags.voice_turn = voice
         flags.last_request_time = now
         flags.last_user_input = command_text
         if request_id:
@@ -240,6 +322,13 @@ async def process_command(
     try:
         response_id = new_response_id()
         await set_state(SystemState.PROCESSING)
+        if not voice:
+            from services.companion_state import set_working_task
+
+            preview = command_text.strip()
+            if len(preview) > 42:
+                preview = preview[:39] + "…"
+            await set_working_task("Working", preview or "Processing request")
         from executor.watchdog import touch_progress
 
         touch_progress()
@@ -265,6 +354,18 @@ async def process_command(
     finally:
         with state_lock:
             flags.is_processing = False
+            flags.voice_turn = False
+        if voice:
+            from tts.hybrid_tts import wait_for_streaming_tts_idle
+            from tts.pocket_tts import is_tts_active
+
+            await wait_for_streaming_tts_idle()
+            deadline = time.time() + 120.0
+            while time.time() < deadline and is_tts_active():
+                await asyncio.sleep(0.08)
+        from services.companion_state import restore_companion_surface
+
+        await restore_companion_surface()
 
 
 async def process_command_with_timeout(
@@ -282,5 +383,6 @@ async def process_command_with_timeout(
         logger.warning("Command processing timed out — resetting state")
         with state_lock:
             flags.is_processing = False
+            flags.voice_turn = False
         await set_state(SystemState.IDLE)
         yield f"data: {json.dumps({'error': 'Process timed out', 'done': True})}\n\n"

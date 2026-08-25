@@ -11,6 +11,7 @@ Each service can be disabled with an environment variable:
     FRIDAY_SERVICE_VOICE_LOOP=0
     FRIDAY_SERVICE_TTS_WARMUP=0
     FRIDAY_SERVICE_BROWSER_AGENT=0
+    FRIDAY_SERVICE_COMPANION_HOTKEY=0
 
 Unset variables default to enabled. Vision loop defaults to disabled. Values ``0``, ``false``, ``no``, and
 ``off`` disable a service; ``1``, ``true``, ``yes``, and ``on`` enable it.
@@ -48,6 +49,7 @@ class ServiceConfig:
     voice_loop: bool = True
     tts_warmup: bool = True
     browser_agent: bool = True
+    companion_hotkey: bool = True
 
     def is_enabled(self, service_name: str) -> bool:
         """Return whether ``service_name`` (registry key) should start."""
@@ -65,6 +67,7 @@ class ServiceConfig:
             voice_loop=_env_enabled("voice_loop"),
             tts_warmup=_env_enabled("tts_warmup"),
             browser_agent=_env_enabled("browser_agent"),
+            companion_hotkey=_env_enabled("companion_hotkey"),
         )
 
     @classmethod
@@ -89,4 +92,5 @@ class ServiceConfig:
             voice_loop=overrides.get("voice_loop", base.voice_loop),
             tts_warmup=overrides.get("tts_warmup", base.tts_warmup),
             browser_agent=overrides.get("browser_agent", base.browser_agent),
+            companion_hotkey=overrides.get("companion_hotkey", base.companion_hotkey),
         )

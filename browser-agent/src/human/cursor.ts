@@ -8,17 +8,34 @@ export async function humanClick(
 ): Promise<void> {
   const cursor = createCursor(page);
   await humanWait(200, 600);
-  if (typeof target === "string") {
-    await cursor.click(target, { hesitate: 200, waitForClick: 80 });
-    return;
+  await cursor.click(target, { hesitate: 200, waitForClick: 80 });
+}
+
+export async function humanDrag(
+  page: Page,
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): Promise<void> {
+  const cursor = createCursor(page);
+  await humanWait(200, 500);
+  await cursor.moveTo(start);
+  await shortPause(120, 280);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  const steps = 8 + Math.floor(Math.random() * 6);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const jitterX = randomBetween(-2, 2);
+    const jitterY = randomBetween(-2, 2);
+    const x = start.x + (end.x - start.x) * t + jitterX;
+    const y = start.y + (end.y - start.y) * t + jitterY;
+    await page.mouse.move(x, y);
+    await shortPause(20, 60);
   }
-  const box = await target.boundingBox();
-  if (!box) {
-    throw new Error("Element not visible for human click");
-  }
-  const x = box.x + box.width * (0.3 + Math.random() * 0.4);
-  const y = box.y + box.height * (0.3 + Math.random() * 0.4);
-  await cursor.moveTo({ x, y });
-  await shortPause(150, 400);
-  await page.mouse.click(x, y);
+  await page.mouse.up();
+  await shortPause(150, 350);
+}
+
+function randomBetween(min: number, max: number): number {
+  return min + Math.random() * (max - min);
 }

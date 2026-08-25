@@ -4,6 +4,7 @@ groq_client.py — Groq-only LLM completions for FRIDAY.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -21,6 +22,11 @@ def _api_key() -> str:
         return settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY", "")
     except Exception:
         return os.getenv("GROQ_API_KEY", "")
+
+
+def _is_rate_limited(exc: Exception) -> bool:
+    err = str(exc).lower()
+    return "429" in err or "rate limit" in err or "too many requests" in err
 
 
 async def groq_complete(
@@ -43,49 +49,66 @@ async def groq_complete(
         except (ImportError, LookupError):
             queue = None
 
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            if queue is not None:
-                full_text: list[str] = []
-                async with client.stream(
-                    "POST",
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                if queue is not None:
+                    full_text: list[str] = []
+                    async with client.stream(
+                        "POST",
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": groq_model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "max_tokens": max_tokens,
+                            "stream": True,
+                        },
+                    ) as resp:
+                        resp.raise_for_status()
+                        async for line in resp.aiter_lines():
+                            if not line or not line.startswith("data: "):
+                                continue
+                            payload = line[6:].strip()
+                            if payload == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(payload)
+                            except json.JSONDecodeError:
+                                continue
+                            delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+                            if delta:
+                                full_text.append(delta)
+                                queue.put_nowait(delta)
+                    return "".join(full_text).strip()
+
+                resp = await client.post(
                     "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {key}",
+                        "Content-Type": "application/json",
+                    },
                     json={
                         "model": groq_model,
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": max_tokens,
-                        "stream": True,
                     },
-                ) as resp:
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line or not line.startswith("data: "):
-                            continue
-                        payload = line[6:].strip()
-                        if payload == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(payload)
-                        except json.JSONDecodeError:
-                            continue
-                        delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
-                        if delta:
-                            full_text.append(delta)
-                            queue.put_nowait(delta)
-                return "".join(full_text).strip()
+                )
+                resp.raise_for_status()
+                return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as exc:
+            last_exc = exc
+            if _is_rate_limited(exc) and attempt < 2:
+                delay = 1.5 * (attempt + 1)
+                logger.warning("Groq rate limited — retry in %.1fs", delay)
+                await asyncio.sleep(delay)
+                continue
+            logger.error("Groq completion failed: %s", exc)
+            return f"[Groq unavailable: {exc}]"
 
-            resp = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={
-                    "model": groq_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": max_tokens,
-                },
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as exc:
-        logger.error("Groq completion failed: %s", exc)
-        return f"[Groq unavailable: {exc}]"
+    logger.error("Groq completion failed after retries: %s", last_exc)
+    return f"[Groq unavailable: {last_exc}]"

@@ -68,6 +68,9 @@ from services.voice_loop import voice_command_loop  # noqa: E402
 from services.websocket_manager import manager, ws_manager  # noqa: E402
 
 bind_ws_manager(ws_manager)
+from services.companion_state import bind_ws_manager as bind_companion_ws  # noqa: E402
+
+bind_companion_ws(ws_manager)
 
 
 async def _boot_background_services(loop: asyncio.AbstractEventLoop) -> None:
@@ -83,6 +86,8 @@ async def _boot_background_services(loop: asyncio.AbstractEventLoop) -> None:
 async def lifespan(app: FastAPI):
     """Boot background services on startup; consolidate memory on shutdown."""
     loop = asyncio.get_event_loop()
+    # HTTP + /health must report ready immediately; STT/voice warm up in background.
+    flags.backend_ready = True
     logger.info("FRIDAY backend starting — HTTP routes available immediately")
     asyncio.create_task(_boot_background_services(loop), name="friday-boot")
     yield

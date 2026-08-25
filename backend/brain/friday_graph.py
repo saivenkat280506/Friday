@@ -75,6 +75,11 @@ TTS_MAX_CHARS = 400
 WAKE_WORD_PREFIXES = ("hey friday", "friday", "okay friday", "ok friday")
 SCREEN_CONTEXT_TRIGGERS = ("what's on", "what is on", "screen", "window", "here", "this")
 GREETING_PATTERN = re.compile(r"^(hi|hello|hey|thanks|ok|okay)\b", re.IGNORECASE)
+INTRO_REQUEST_PATTERN = re.compile(
+    r"\b(?:introduce\s+(?:yourself|your\s+self)|who\s+are\s+you|what\s+are\s+you|"
+    r"tell\s+me\s+about\s+(?:yourself|you)|what\s+do\s+you\s+do)\b",
+    re.IGNORECASE,
+)
 
 CONVERSATIONAL_INTENTS: frozenset[IntentCategory] = frozenset({
     IntentCategory.CHAT,
@@ -134,6 +139,11 @@ async def _call_llm(
 ) -> str:
     """Route a completion request to the configured LLM provider."""
     from config import settings
+    from services.runtime_state import flags
+
+    if flags.voice_turn:
+        stream = False
+        max_tokens = min(max_tokens, 280)
 
     model = state.get("llm_model", settings.LLM_MODEL)
     groq_model = model if str(model).startswith("llama") else settings.LLM_MODEL
@@ -153,6 +163,23 @@ def _strip_wake_words(text: str) -> str:
             cleaned = cleaned[len(prefix):].strip()
             break
     return cleaned
+
+
+_STT_PHRASE_FIXES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"^i['']?m\s+your\s+joke\.?$", re.I), "tell me a joke"),
+    (re.compile(r"^your\s+joke\.?$", re.I), "tell me a joke"),
+    (re.compile(r"^let['']?s\s+ask\s+you\s+", re.I), ""),
+    (re.compile(r"^can\s+you\s+", re.I), ""),
+]
+
+
+def _normalize_stt_phrasing(text: str) -> str:
+    """Fix common misheard voice phrases before routing."""
+    cleaned = (text or "").strip()
+    for pattern, replacement in _STT_PHRASE_FIXES:
+        if pattern.search(cleaned):
+            cleaned = pattern.sub(replacement, cleaned).strip()
+    return cleaned or text
 
 
 def _should_retrieve_memories(cleaned_input: str) -> bool:
@@ -304,11 +331,18 @@ def _maybe_prefill_plan(
     intent: IntentCategory,
     params: dict[str, Any],
     fast_path: bool,
+    *,
+    cleaned_input: str = "",
 ) -> tuple[list[str], int]:
     """
     Deterministic plan shortcut — skips the LLM planner when a direct tool
     mapping exists (typically on rule fast-path hits).
     """
+    if intent == IntentCategory.EXPLAIN:
+        query = (params.get("query") or cleaned_input or "").strip().rstrip("?.! ")
+        if query:
+            return [f"smart_search:{query}"], 0
+
     if not fast_path:
         return [], 0
     if intent == IntentCategory.OPEN_WHATSAPP:
@@ -441,9 +475,13 @@ def _decide_reflect(state: AgentState) -> ReflectOutcome:
 
 
 def _build_chat_prompt(state: AgentState) -> str:
-    from brain.friday_persona import build_chat_system_prompt
+    from brain.friday_persona import build_chat_system_prompt, is_factual_question
 
-    history_text = _summarize_short_term(state.get("short_term") or [], limit=6)
+    intent = state.get("intent")
+    intent_val = intent.value if hasattr(intent, "value") else str(intent or "")
+    cleaned_input = state.get("cleaned_input") or ""
+    history_limit = 2 if intent_val == "explain" or is_factual_question(cleaned_input) else 6
+    history_text = _summarize_short_term(state.get("short_term") or [], limit=history_limit)
     memories = state.get("memory_context") or "\n".join(state.get("retrieved_memories") or [])
     prefs = state.get("user_preferences") or {}
     system = build_chat_system_prompt(
@@ -451,7 +489,8 @@ def _build_chat_prompt(state: AgentState) -> str:
         history=history_text,
         user_name=prefs.get("name", "Boss"),
         active_window=state.get("active_window") or "",
-        user_input=state.get("cleaned_input") or "",
+        user_input=cleaned_input,
+        intent=intent_val,
     )
     return (
         f"{system}\n\n"
@@ -483,12 +522,15 @@ def _synthesise_response(
     for call in reversed(calls):
         if call["status"] == ExecutionStatus.SUCCESS and call.get("result"):
             result = call["result"]
-            if isinstance(result, str) and len(result) < 300:
-                return result
             if isinstance(result, dict) and result.get("message"):
                 return str(result["message"])
+            if isinstance(result, str):
+                return result
 
     app = state["extracted_params"].get("app", "the app")
+    if state["extracted_params"].get("fresh_workspace"):
+        return "Opening VS Code with a fresh workspace now, Boss."
+
     confirmations: dict[IntentCategory, str] = {
         IntentCategory.MOUSE_CLICK: "Done, Boss. Click executed.",
         IntentCategory.KEYBOARD_TYPE: "Typed that in for you, Boss.",
@@ -501,20 +543,23 @@ def _synthesise_response(
             if state["extracted_params"].get("song")
             else "Resuming playback, Boss."
         ),
+        IntentCategory.NEWS: "Here are the latest headlines, Boss.",
     }
     return confirmations.get(intent, "Done, Boss.")
 
 
 def _clean_for_tts(text: str) -> str:
     from tts.pocket_tts import clean_text_for_speech
+    from services.runtime_state import flags
 
     text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
     text = re.sub(r"`.*?`", "", text)
     text = re.sub(r"\*+", "", text)
     text = re.sub(r"#+\s", "", text)
     text = clean_text_for_speech(text.strip())
-    if len(text) > TTS_MAX_CHARS:
-        text = text[: TTS_MAX_CHARS - 3] + "..."
+    max_chars = 220 if flags.voice_turn else TTS_MAX_CHARS
+    if len(text) > max_chars:
+        text = text[: max_chars - 3] + "..."
     return text
 
 
@@ -547,7 +592,7 @@ async def node_perceive(state: AgentState) -> AgentState:
     from executor.mouse_controller import ComputerController
 
     raw = state["raw_input"].strip()
-    cleaned = _strip_wake_words(raw)
+    cleaned = _normalize_stt_phrasing(_strip_wake_words(raw))
     session_id = state["session_id"]
 
     ctrl = ComputerController()
@@ -628,14 +673,21 @@ async def node_classify(state: AgentState) -> AgentState:
         _build_confirmation_prompt(intent) if needs_confirmation else None
     )
 
-    plan, current_step = _maybe_prefill_plan(intent, params, fast_path)
+    cleaned = state.get("cleaned_input") or state["raw_input"].strip()
+    plan, current_step = _maybe_prefill_plan(
+        intent,
+        params,
+        fast_path,
+        cleaned_input=cleaned,
+    )
 
-    # Conversational intents skip tool execution entirely.
+    # Conversational intents skip tool execution unless a deterministic plan exists.
     route = ""
     if (
         not needs_clarification
         and not needs_confirmation
         and intent in CONVERSATIONAL_INTENTS
+        and not plan
     ):
         route = GraphRoute.RESPOND.value
 
@@ -664,6 +716,14 @@ async def node_classify(state: AgentState) -> AgentState:
     if plan:
         updates["plan"] = plan
         updates["current_step"] = current_step
+
+    from brain.model_router import resolve_llm_model
+
+    updates["llm_model"] = resolve_llm_model(
+        intent,
+        params,
+        cleaned_input=state.get("cleaned_input") or state.get("raw_input") or "",
+    )
 
     return updates
 
@@ -712,8 +772,12 @@ async def node_plan(state: AgentState) -> AgentState:
     if simple:
         return {**state, "plan": simple, "current_step": 0}
 
+    from brain.model_router import resolve_llm_model
+
+    plan_model = resolve_llm_model(state["intent"], state.get("extracted_params"), for_plan=True)
+    plan_state = {**state, "llm_model": plan_model}
     plan_prompt = _build_plan_prompt(state)
-    llm_resp = await _call_llm(state, plan_prompt, max_tokens=400)
+    llm_resp = await _call_llm(plan_state, plan_prompt, max_tokens=400)
     steps = _parse_plan_from_llm(llm_resp)
     if not steps:
         steps = [f"chat:{state['cleaned_input']}"]
@@ -785,13 +849,33 @@ async def node_respond(state: AgentState) -> AgentState:
     calls = state.get("tool_calls") or []
 
     request = state.get("cleaned_input", "").lower().strip()
-    if intent == IntentCategory.CHAT and re.search(r"\b(?:tell me|say|give me)\s+(?:a\s+)?joke\b", request):
-        response = get_builder().joke()
-    elif intent == IntentCategory.CHAT and re.fullmatch(
-        r"(?:hi|hello|hey|howdy|yo|good\s+(?:morning|afternoon|evening)|greetings)[!?. ]*",
-        request,
-    ):
-        response = get_builder().greeting()
+    if intent == IntentCategory.CHAT and INTRO_REQUEST_PATTERN.search(request):
+        response = get_builder().intro()
+        return {
+            **state,
+            "final_response": response,
+            "tts_text": "",
+            "intro_audio": True,
+            "ui_event": _build_ui_event(intent, state),
+            "llm_response": response,
+        }
+    if intent == IntentCategory.CHAT:
+        from brain.friday_persona import is_joke_request
+
+        if is_joke_request(request):
+            response = get_builder().joke()
+        elif re.fullmatch(
+            r"(?:hi|hello|hey|howdy|yo|good\s+(?:morning|afternoon|evening)|greetings)[!?. ]*",
+            request,
+        ):
+            response = get_builder().greeting()
+        else:
+            response = await _call_llm(
+                state,
+                _build_chat_prompt(state),
+                max_tokens=800,
+                stream=True,
+            )
     elif intent in CONVERSATIONAL_INTENTS:
         response = await _call_llm(
             state,

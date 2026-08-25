@@ -29,7 +29,9 @@ export function useFriday() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [speechTranscript, setSpeechTranscript] = useState("");
-  const [agentState, setAgentState] = useState<"idle" | "listening" | "thinking" | "talking" | "transcribing">("idle");
+  const [agentState, setAgentState] = useState<
+    "idle" | "idle_listening" | "listening" | "thinking" | "talking" | "transcribing"
+  >("idle");
   const [actionLogs, setActionLogs] = useState<ActionLogEntry[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const seenMsgsRef = useRef<Map<string, number>>(new Map());
@@ -79,6 +81,7 @@ export function useFriday() {
             thinking: "Processing request…",
             talking: "Generating response…",
             transcribing: "Transcribing audio…",
+            idle_listening: "Voice session standby",
             idle: "Standby",
           };
           if (data.state !== "idle") {
@@ -194,6 +197,13 @@ export function useFriday() {
           pushLog(makeLog("Agent", `Step ${data.step}: ${data.action}`, status));
         }
 
+        // ── Companion overlay (voice still runs through the main app pipeline) ──
+        if (data.type === "companion_mode") {
+          if (data.active) {
+            pushLog(makeLog("Companion", "Voice controls active — chat updates here", "info"));
+          }
+        }
+
         // ── Focus window ──
         if (data.action === "focus_window") {
           window.focus();
@@ -223,11 +233,13 @@ export function useFriday() {
 
   const isBackendReachable = useCallback(async () => {
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
       const res = await fetch(`${BACKEND_URL}/health`, {
         method: "GET",
         cache: "no-store",
-        signal: AbortSignal.timeout(10000),
-      });
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
       return res.ok;
     } catch {
       return false;
@@ -299,9 +311,16 @@ export function useFriday() {
   // ── Mic Toggle ────────────────────────────────────────────────────────────
   const toggleMic = useCallback(async () => {
     try {
-      if (agentState !== "idle") {
+      const stopVoiceStates = new Set([
+        "listening",
+        "thinking",
+        "talking",
+        "transcribing",
+      ]);
+      if (stopVoiceStates.has(agentState)) {
         await fetch(`${BACKEND_URL}/stop-trigger`, { method: "POST" });
         pushLog(makeLog("Voice", "Stop trigger sent", "info"));
+        setAgentState("idle");
         return;
       }
       const response = await fetch(`${BACKEND_URL}/listen-trigger`, { method: "POST" });

@@ -385,7 +385,11 @@ class ToolRegistry:
             IntentCategory.KEYBOARD_HOTKEY: f"keyboard_hotkey:{','.join(params.get('keys', []))}",
             IntentCategory.SCREEN_CAPTURE: "screen_capture:",
             IntentCategory.SCREEN_READ: "screen_read:",
-            IntentCategory.OPEN_APP: f"open_app:{params.get('app', '')}",
+            IntentCategory.OPEN_APP: (
+                f"open_vscode_new_project:{params.get('project_name', '')}"
+                if params.get("fresh_workspace")
+                else f"open_app:{params.get('app', '')}"
+            ),
             IntentCategory.WINDOW_FOCUS: f"window_focus:{params.get('app', '')}",
             IntentCategory.WINDOW_CLOSE: f"window_close:{params.get('app', '')}",
             IntentCategory.CLIPBOARD_COPY: "clipboard_copy:",
@@ -402,7 +406,7 @@ class ToolRegistry:
             IntentCategory.OPEN_WHATSAPP: f"send_whatsapp_message:{params.get('contact', '')}",
             IntentCategory.TAB_CLEANUP: "smart_tab_cleanup:",
             IntentCategory.PLAY_MEDIA: (
-                f"play_music:{params.get('song', '')}:{params.get('platform', 'spotify')}"
+                f"play_music:{params.get('song', '')}:{params.get('platform', 'local')}"
                 if params.get("song") or params.get("platform")
                 else "media_play:"
             ),
@@ -424,6 +428,117 @@ class ToolRegistry:
         """List registered async tool names (used by the LangGraph planner)."""
         return list(self._async_map.keys())
 
+    @staticmethod
+    def _merge_sync_params(
+        tool_name: str,
+        raw_param: str,
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Map plan step raw_param strings into handler parameter dicts."""
+        merged = dict(params)
+        if not raw_param:
+            return merged
+
+        if tool_name in ("read_headlines", "search_browser", "smart_search", "search_and_browse"):
+            merged.setdefault("query", raw_param)
+        elif tool_name in (
+            "play_music",
+            "play_youtube",
+            "play_spotify_music",
+            "play_youtube_music",
+        ):
+            song, _, platform = raw_param.partition(":")
+            if song:
+                merged.setdefault("song", song)
+            if platform:
+                merged.setdefault("platform", platform)
+        elif tool_name == "open_app":
+            merged.setdefault("app", raw_param)
+        elif tool_name == "open_vscode_new_project":
+            merged.setdefault("project_name", raw_param)
+        elif tool_name == "send_whatsapp_message":
+            merged.setdefault("contact", raw_param)
+        else:
+            merged.setdefault("_raw", raw_param)
+        return merged
+
+    async def _broadcast_companion_for_sync_tool(
+        self,
+        tool_name: str,
+        params: dict[str, Any],
+        message: str,
+    ) -> None:
+        try:
+            from services.companion_state import set_music_task, set_working_task
+            from services.runtime_state import flags
+
+            if flags.voice_turn and tool_name not in (
+                "play_music",
+                "play_spotify_music",
+                "play_youtube",
+                "play_youtube_music",
+            ):
+                return
+
+            if tool_name in (
+                "play_music",
+                "play_spotify_music",
+                "play_youtube",
+                "play_youtube_music",
+            ):
+                platform = params.get("platform") or "local"
+                if tool_name == "play_spotify_music":
+                    platform = "spotify"
+                elif tool_name == "play_youtube_music":
+                    platform = "youtube_music"
+                elif tool_name == "play_youtube":
+                    platform = "youtube"
+                song = (params.get("song") or "").strip()
+                if not song and platform == "local":
+                    from executor.local_music_player import get_playback_state
+
+                    song = get_playback_state().get("song", "Music")
+                if not song:
+                    song = "Music"
+                await set_music_task(song=song, platform=platform, is_playing=True)
+            elif tool_name == "read_headlines":
+                await set_working_task("Headlines", "Summarizing latest news…")
+            elif tool_name in ("search_browser", "search_and_browse", "browser_agent"):
+                query = params.get("query") or params.get("task") or "Browser"
+                await set_working_task("Browser", str(query)[:48])
+            elif tool_name == "open_vscode_new_project":
+                await set_working_task("VS Code", "Opening fresh workspace…")
+        except Exception as exc:
+            logger.debug("Companion broadcast skipped for %s: %s", tool_name, exc)
+
+    async def _execute_sync_tool(
+        self,
+        tool_name: str,
+        raw_param: str,
+        params: dict[str, Any],
+    ) -> tuple[bool, str]:
+        """Run a legacy sync handler from skills_registry.json in a worker thread."""
+        resolved = self._resolve_name(tool_name)
+        sync_fn = self._sync_handlers.get(resolved) or self._sync_handlers.get(tool_name)
+        if not sync_fn:
+            return False, f"Unknown tool: {tool_name}"
+
+        definition = self.get_definition(resolved) or self.get_definition(tool_name)
+        timeout = definition.timeout_seconds if definition else DEFAULT_TIMEOUT_SECONDS
+        merged = self._merge_sync_params(resolved, raw_param, params)
+
+        try:
+            success, message = await asyncio.wait_for(
+                asyncio.to_thread(sync_fn, merged),
+                timeout=timeout,
+            )
+            return bool(success), str(message)
+        except asyncio.TimeoutError:
+            return False, f"Tool '{tool_name}' timed out after {timeout}s"
+        except Exception as exc:
+            logger.exception("Sync tool %s failed: %s", tool_name, exc)
+            return False, str(exc)
+
     async def execute_tool(
         self,
         tool_name: str,
@@ -443,12 +558,23 @@ class ToolRegistry:
         resolved = self._resolve_name(tool_name)
         fn = self._async_map.get(resolved) or self._async_map.get(tool_name)
         if not fn:
+            success, message = await self._execute_sync_tool(tool_name, raw_param, params)
+            merged = self._merge_sync_params(resolved, raw_param, params)
+            if success:
+                await self._broadcast_companion_for_sync_tool(resolved, merged, message)
+                return ToolCall(
+                    tool_name=tool_name,
+                    parameters=merged,
+                    result={"status": "success", "message": message},
+                    status=ExecutionStatus.SUCCESS,
+                    error=None,
+                )
             return ToolCall(
                 tool_name=tool_name,
-                parameters={"raw_param": raw_param},
+                parameters=merged,
                 result=None,
                 status=ExecutionStatus.FAILED,
-                error=f"Unknown tool: {tool_name}",
+                error=message,
             )
 
         definition = self.get_definition(resolved) or self.get_definition(tool_name)

@@ -27,6 +27,7 @@ from services.command_processor import process_command, process_command_with_tim
 from services.event_bus import BusEvent, event_bus
 from services.runtime_state import (
     flags,
+    get_state,
     register_session,
     reset_processing_state,
     set_state,
@@ -83,9 +84,26 @@ def register_routes(app: FastAPI) -> None:
 
     @app.get("/health")
     async def health():
-        from services.runtime_state import get_state
+        from services.companion_state import get_companion_task
+        from services.runtime_state import backend_status_label, get_state
+        from tts.pocket_tts import is_tts_active
 
-        return {"status": "online", "state": get_state().value}
+        task = get_companion_task()
+        return {
+            "status": "online",
+            # HTTP is up if this handler runs — avoid stuck STARTING in the UI.
+            "backend_status": "online",
+            "ready": True,
+            "stt_ready": flags.stt_ready,
+            "mic_active": flags.is_listening,
+            "state": get_state().value,
+            "companion_task": task.to_payload(),
+            "companion_hotkey_seq": flags.companion_hotkey_seq,
+            "companion_mode": flags.companion_mode,
+            "companion_collapsed": flags.companion_surface_collapsed,
+            "stt_provider": flags.stt_provider,
+            "tts_active": is_tts_active(),
+        }
 
     @app.get("/settings")
     async def get_settings_endpoint():
@@ -125,16 +143,311 @@ def register_routes(app: FastAPI) -> None:
 
     @app.post("/listen-trigger")
     async def listen_trigger():
-        flags.force_listen_trigger = True
+        flags.continuous_voice_mode = False
+        flags.stop_listen_trigger = False
+        stop_event.clear()
+        with state_lock:
+            flags.force_listen_trigger = True
+            flags.pending_ui_listen = True
+        if get_state() in (SystemState.IDLE_LISTENING, SystemState.TRANSCRIBING):
+            await set_state(SystemState.IDLE)
         event_bus.emit_nowait(BusEvent("wake"))
         return {"status": "triggered"}
 
+    @app.post("/companion/activate")
+    async def companion_activate():
+        """Enable companion control-center mode while the desktop app is minimized."""
+        from services.companion_state import broadcast_companion_task
+
+        flags.companion_mode = True
+        flags.companion_surface_collapsed = False
+        if not flags.continuous_voice_mode:
+            flags.force_listen_trigger = False
+            flags.pending_ui_listen = False
+        await ws_manager.broadcast_json({"type": "companion_mode", "active": True})
+        await broadcast_companion_task()
+        return {"status": "active", "companion_mode": True}
+
+    @app.post("/companion/deactivate")
+    async def companion_deactivate():
+        """Hide the companion overlay and end any active voice session."""
+        from services.voice_loop import cancel_active_listen
+
+        flags.companion_mode = False
+        flags.companion_surface_collapsed = True
+        flags.continuous_voice_mode = False
+        cancel_active_listen()
+        await set_state(SystemState.IDLE)
+        await ws_manager.broadcast_json({"type": "companion_mode", "active": False})
+        await ws_manager.broadcast_json({"type": "companion_dismissed"})
+        return {"status": "inactive", "companion_mode": False}
+
+    @app.post("/companion/listen")
+    async def companion_listen():
+        """Start continuous companion voice (same as hotkey open)."""
+        from services.companion_state import start_companion_listening
+
+        await start_companion_listening()
+        return {"status": "listening", "companion_mode": True}
+
+    @app.post("/companion/stop")
+    async def companion_stop():
+        """Stop the current companion voice session without leaving companion mode."""
+        from services.companion_state import restore_companion_surface
+        from services.voice_loop import cancel_active_listen
+
+        cancel_active_listen()
+        await set_state(SystemState.IDLE)
+        await restore_companion_surface()
+        return {"status": "stopped", "companion_mode": flags.companion_mode}
+
+    @app.post("/companion/f12")
+    async def companion_f12():
+        """F12 toggle — open companion + listen, or close and kill all linked tasks."""
+        from services.companion_hotkey import fire_companion_hotkey
+
+        result = await fire_companion_hotkey(source="f12")
+        return result
+
+    @app.post("/companion/dismiss")
+    async def companion_dismiss():
+        """Dismiss companion — end voice/TTS/thinking and collapse the surface."""
+        from services.companion_hotkey import dismiss_companion_session
+
+        result = await dismiss_companion_session(source="dismiss")
+        return {"status": "dismissed", "collapsed": True, **result}
+
+    @app.post("/app/shutdown")
+    async def app_shutdown():
+        """Gracefully stop voice, agents, hotkeys, and background workers before exit."""
+        from services.companion_hotkey import dismiss_companion_session, terminate_background_work
+        from services.startup import shutdown_services
+
+        await dismiss_companion_session(source="shutdown")
+        await terminate_background_work()
+        await shutdown_services()
+        return {"status": "shutting_down"}
+
+    @app.get("/companion/task")
+    async def companion_task():
+        from services.companion_state import get_companion_task
+
+        return get_companion_task().to_payload()
+
+    @app.get("/companion/hotkey-signal")
+    async def companion_hotkey_signal():
+        from services.companion_hotkey import companion_hotkey_label, keyboard_hook_active
+
+        return {
+            "seq": flags.companion_hotkey_seq,
+            "action": flags.companion_hotkey_last_action,
+            "companion_mode": flags.companion_mode,
+            "collapsed": flags.companion_surface_collapsed,
+            "keyboard_hook_active": keyboard_hook_active(),
+            "hotkey": companion_hotkey_label(),
+        }
+
+    @app.post("/companion/hotkey")
+    async def companion_hotkey():
+        """Programmatic F12 equivalent — toggle companion open/close."""
+        from services.companion_hotkey import fire_companion_hotkey
+
+        return await fire_companion_hotkey(source="api")
+
+    @app.post("/companion/hotkey/refresh")
+    async def companion_hotkey_refresh():
+        """Re-register global hotkeys after the background agent releases Alt+Space."""
+        from services.companion_hotkey import keyboard_hook_active, refresh_companion_hotkey
+
+        active = refresh_companion_hotkey()
+        return {"status": "ok" if active else "unavailable", "keyboard_hook_active": keyboard_hook_active()}
+
+    @app.post("/companion/media/{action}")
+    async def companion_media(action: str):
+        """Companion music controls for local playback and Spotify desktop."""
+        from executor.local_music_player import (
+            adjust_volume,
+            get_playback_state,
+            next_track,
+            pause,
+            previous_track,
+            resume,
+            stop,
+        )
+        from executor.spotify_control import (
+            is_spotify_running,
+            next_track as spotify_next,
+            play_pause,
+            previous_track as spotify_prev,
+        )
+        from services.companion_state import set_idle_task, set_music_task, update_music_playback
+
+        action = action.lower().strip()
+        from executor.local_music_player import sync_playing_flag
+
+        sync_playing_flag()
+        playback = get_playback_state()
+        spotify_active = is_spotify_running()
+
+        if action == "play":
+            if playback.get("has_track"):
+                ok, song = resume()
+            elif not playback.get("has_track") and not spotify_active:
+                from executor.local_music_player import play_track
+
+                ok, song, _path = play_track("")
+                if ok:
+                    await set_music_task(song=song, platform="local", is_playing=True)
+                    return {
+                        "status": "ok",
+                        "action": action,
+                        "song": song,
+                        "is_playing": True,
+                        "platform": "local",
+                        "can_control": True,
+                    }
+            elif spotify_active:
+                ok, _ = play_pause()
+                if ok:
+                    await set_music_task(
+                        song="Spotify",
+                        platform="spotify",
+                        is_playing=True,
+                        detail="Spotify",
+                    )
+                    return {
+                        "status": "ok",
+                        "action": action,
+                        "song": "Spotify",
+                        "is_playing": True,
+                        "platform": "spotify",
+                        "can_control": True,
+                    }
+                song = ""
+            else:
+                ok, song = False, ""
+        elif action == "pause":
+            if playback.get("has_track"):
+                ok, song = pause()
+            elif spotify_active:
+                ok, _ = play_pause()
+                song = "Spotify"
+                if ok:
+                    await update_music_playback(is_playing=False, song=song)
+                    return {
+                        "status": "ok",
+                        "action": action,
+                        "song": song,
+                        "is_playing": False,
+                        "platform": "spotify",
+                        "can_control": True,
+                    }
+            else:
+                ok, song = False, ""
+        elif action == "next":
+            if playback.get("has_track"):
+                ok, song = next_track()
+            elif spotify_active:
+                ok, _ = spotify_next()
+                song = "Spotify"
+                if ok:
+                    await set_music_task(
+                        song=song,
+                        platform="spotify",
+                        is_playing=True,
+                        detail="Spotify",
+                    )
+                    return {
+                        "status": "ok",
+                        "action": action,
+                        "song": song,
+                        "is_playing": True,
+                        "platform": "spotify",
+                        "can_control": True,
+                    }
+            else:
+                ok, song = False, ""
+        elif action == "prev":
+            if playback.get("has_track"):
+                ok, song = previous_track()
+            elif spotify_active:
+                ok, _ = spotify_prev()
+                song = "Spotify"
+                if ok:
+                    await set_music_task(
+                        song=song,
+                        platform="spotify",
+                        is_playing=True,
+                        detail="Spotify",
+                    )
+                    return {
+                        "status": "ok",
+                        "action": action,
+                        "song": song,
+                        "is_playing": True,
+                        "platform": "spotify",
+                        "can_control": True,
+                    }
+            else:
+                ok, song = False, ""
+        elif action == "stop":
+            if playback.get("has_track"):
+                stop()
+            elif spotify_active:
+                play_pause()
+            await set_idle_task()
+            return {"status": "ok", "action": action}
+        elif action in ("volume_up", "volup"):
+            if playback.get("has_track"):
+                level = adjust_volume(0.1)
+                return {"status": "ok", "action": action, "volume": level}
+            return {"status": "error", "message": "No local track loaded"}
+        elif action in ("volume_down", "voldown"):
+            if playback.get("has_track"):
+                level = adjust_volume(-0.1)
+                return {"status": "ok", "action": action, "volume": level}
+            return {"status": "error", "message": "No local track loaded"}
+        else:
+            return {"status": "error", "message": f"Unknown action: {action}"}
+
+        if not ok and not get_playback_state().get("has_track") and not spotify_active:
+            return {"status": "error", "message": "No music source active"}
+
+        playback = get_playback_state()
+        if playback.get("has_track"):
+            await update_music_playback(
+                is_playing=playback.get("is_playing", False),
+                song=playback.get("song") or song,
+            )
+        return {
+            "status": "ok",
+            "action": action,
+            "song": playback.get("song", "") or song,
+            "is_playing": playback.get("is_playing", False),
+            "platform": "local",
+            "can_control": True,
+        }
+
     @app.post("/stop-trigger")
     async def stop_trigger():
-        reset_processing_state()
+        from services.companion_state import on_companion_voice_stopped
+        from services.voice_loop import cancel_active_listen
+        from tts.hybrid_tts import stop_audio_stream
         from tts.pocket_tts import stop_speech
 
+        if flags.companion_mode:
+            cancel_active_listen(keep_continuous_mode=True)
+            stop_speech()
+            await asyncio.to_thread(stop_audio_stream, 2.0)
+            await set_state(SystemState.IDLE)
+            await on_companion_voice_stopped()
+            logger.info("Stop trigger received (companion — mic will reopen)")
+            return {"status": "stopping"}
+
+        reset_processing_state(keep_companion_mode=True)
         stop_speech()
+        await asyncio.to_thread(stop_audio_stream, 2.0)
+        await set_state(SystemState.IDLE)
         event_bus.emit_nowait(BusEvent("stop"))
         logger.info("Stop trigger received")
         return {"status": "stopping"}
@@ -249,7 +562,7 @@ def register_routes(app: FastAPI) -> None:
         except Exception as exc:
             logger.warning("Error stopping speech during reset: %s", exc)
 
-        reset_processing_state()
+        reset_processing_state(keep_companion_mode=False)
 
         try:
             vision_agent.last_desc = ""

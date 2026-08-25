@@ -111,3 +111,4 @@ class AgentState(TypedDict):
     needs_confirmation:     NotRequired[bool]
     confirmation_prompt:    NotRequired[Optional[str]]
     reflect_decision:       NotRequired[str]   # "continue" | "retry" | "finish"
+    intro_audio:            NotRequired[bool]  # play bundled voice intro instead of TTS

@@ -1,0 +1,1141 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 272px;
+        height: 188px;
+        background: transparent;
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+      }
+      body {
+        font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+        color: #f6f5f9;
+      }
+      .widget {
+        width: 272px;
+        min-height: 188px;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #1a1a1f;
+        border-radius: 26px;
+        background: #050507;
+        opacity: 0;
+        transform: translateY(-10px) scale(0.96);
+        transition: opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1), transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+        will-change: opacity, transform;
+      }
+      body.is-visible .widget { opacity: 1; transform: translateY(0) scale(1); }
+      body.is-hiding .widget { opacity: 0; transform: translateY(-8px) scale(0.97); pointer-events: none; }
+      body.is-wide .widget,
+      body.is-wide { width: 420px; max-width: 420px; }
+      body.is-wide .task-status { white-space: normal; }
+      body.is-wide .task-detail { -webkit-line-clamp: 3; font-size: 12px; }
+
+      .widget-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+        height: 54px;
+        padding: 12px 14px 6px;
+        gap: 8px;
+      }
+      .top-left { display: flex; align-items: center; gap: 8px; }
+
+      .mini-orb {
+        --orb-glow: rgba(122, 61, 255, 0.38);
+        position: relative;
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
+      }
+      .mini-orb-glow {
+        position: absolute; inset: -5px; border-radius: 50%;
+        background: radial-gradient(circle, var(--orb-glow) 0%, transparent 70%);
+        opacity: 0.8;
+      }
+      .mini-orb-ring {
+        position: absolute; inset: 0; border-radius: 50%;
+        background: conic-gradient(from 205deg, #1a0a3d 0%, #7a3dff 16%, #d7bbff 30%, #5523c5 48%, transparent 62%, #29135b 78%, #1a0a3d 100%);
+        -webkit-mask: radial-gradient(circle, transparent 56%, #000 58%);
+        mask: radial-gradient(circle, transparent 56%, #000 58%);
+        transform-origin: center;
+      }
+      .mini-orb-core {
+        position: absolute; inset: 6px; border-radius: 50%;
+        background: radial-gradient(circle at 40% 35%, #1a1230 0%, #08060f 68%, #040308 100%);
+        box-shadow: inset 0 1px 6px rgba(255, 255, 255, 0.06);
+      }
+
+      .icon-btn {
+        display: flex; align-items: center; justify-content: center;
+        width: 34px; height: 34px;
+        border: 1px solid #24242c; border-radius: 18px;
+        background: #08080b; cursor: pointer;
+        transition: border-color 0.2s ease, background-color 0.2s ease;
+      }
+      .icon-btn:hover { border-color: #4a3870; background: #0c0c10; }
+      .icon-btn svg { width: 15px; height: 15px; stroke: #d8d5df; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+      .control-capsule {
+        position: relative;
+        display: flex; align-items: center; justify-content: space-evenly;
+        gap: 5px; width: 96px; height: 34px; padding: 0 16px 0 10px;
+        border: 1px solid #24242c; border-radius: 18px; background: #08080b;
+        cursor: pointer;
+        transition: border-color 0.2s ease, background-color 0.2s ease;
+      }
+      .backend-dot {
+        position: absolute;
+        right: 7px;
+        top: 50%;
+        width: 6px;
+        height: 6px;
+        margin-top: -3px;
+        border-radius: 50%;
+        pointer-events: none;
+        transition: background-color 0.25s ease, box-shadow 0.25s ease;
+      }
+      .backend-dot.checking {
+        background: #fbbf24;
+        box-shadow: 0 0 6px rgba(251, 191, 36, 0.45);
+        animation: backend-dot-pulse 1.35s ease-in-out infinite;
+      }
+      .backend-dot.online {
+        background: #4ade80;
+        box-shadow: 0 0 6px rgba(74, 222, 128, 0.55);
+      }
+      .backend-dot.offline {
+        background: #f87171;
+        box-shadow: 0 0 5px rgba(248, 113, 113, 0.5);
+      }
+      @keyframes backend-dot-pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.55; transform: scale(0.9); }
+      }
+      .control-capsule:hover { border-color: #4a3870; background: #0c0c10; }
+      .voice-mode-tip {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        padding: 4px 8px;
+        border-radius: 8px;
+        border: 1px solid #2e2a38;
+        background: #0d0b12;
+        color: #d8d5df;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(-4px);
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        z-index: 5;
+      }
+      .control-capsule:hover .voice-mode-tip,
+      .control-capsule:focus-visible .voice-mode-tip {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .control-capsule.speaking-output {
+        border-color: #b87ad0;
+        background: #120f18;
+        box-shadow: 0 0 14px rgba(199, 110, 216, 0.32);
+      }
+      .control-capsule.speaking-output .bars i {
+        background: #e8b8f2;
+        animation: bar-talk 0.38s ease-in-out infinite alternate;
+      }
+      .control-capsule.speaking-output .bars i:nth-child(2) { animation-delay: 0.08s; }
+      .control-capsule.speaking-output .bars i:nth-child(3) { animation-delay: 0.16s; }
+      .control-capsule.speaking-output .bars i:nth-child(4) { animation-delay: 0.24s; }
+      .control-capsule.speaking-output .mic { stroke: #f0d0fa; }
+      .bars { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
+      .bars i { display: block; width: 2px; border-radius: 3px; background: #c8c4d0; transform-origin: bottom; }
+      .bars i:nth-child(1) { height: 4px; }
+      .bars i:nth-child(2) { height: 8px; }
+      .bars i:nth-child(3) { height: 12px; }
+      .bars i:nth-child(4) { height: 6px; }
+      .mic { width: 13px; height: 13px; fill: none; stroke: #d8d5df; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+
+      .task-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        padding: 2px 14px 14px;
+        min-height: 0;
+      }
+      .task-status {
+        font-size: 21px;
+        font-weight: 650;
+        line-height: 1.25;
+        letter-spacing: -0.03em;
+        color: #f8f7fa;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding-bottom: 1px;
+      }
+      .task-detail {
+        margin-top: 3px;
+        font-size: 11px;
+        line-height: 1.35;
+        color: #9d9aa5;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        white-space: normal;
+        max-height: 2.7em;
+      }
+      body.is-transcribing .task-status {
+        font-size: 21px;
+        font-weight: 650;
+        letter-spacing: -0.03em;
+        text-transform: none;
+        color: #8ed0e2;
+      }
+      body.is-transcribing .task-detail {
+        display: block;
+        max-height: none;
+        -webkit-line-clamp: unset;
+        font-size: 13px;
+        line-height: 1.45;
+        color: transparent;
+        padding-top: 2px;
+      }
+      .transcript-live {
+        display: inline;
+        background: linear-gradient(
+          100deg,
+          #8e89a0 0%,
+          #8e89a0 35%,
+          #f4f2fa 50%,
+          #8e89a0 65%,
+          #8e89a0 100%
+        );
+        background-size: 220% 100%;
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        animation: transcript-shimmer 2.2s ease-in-out infinite;
+      }
+      .transcript-cursor {
+        display: inline-block;
+        width: 2px;
+        height: 1.05em;
+        margin-left: 2px;
+        vertical-align: text-bottom;
+        border-radius: 1px;
+        background: #c9a8ff;
+        animation: cursor-blink 0.9s step-end infinite;
+      }
+      @keyframes transcript-shimmer {
+        0% { background-position: 120% 0; }
+        100% { background-position: -120% 0; }
+      }
+      @keyframes cursor-blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+      }
+      .song-name {
+        margin-top: 5px;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.3;
+        color: #e2dfe8;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .activity-track {
+        flex-shrink: 0;
+        position: relative;
+        height: 22px;
+        margin-top: 8px;
+        opacity: 0.92;
+        pointer-events: none;
+        user-select: none;
+        overflow: hidden;
+      }
+      .pixel-cat-scene {
+        position: absolute;
+        inset: 0 10px 0;
+      }
+      .pixel-cat-ground {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 1px;
+        height: 1px;
+        background: linear-gradient(90deg, transparent 0%, rgba(122, 61, 255, 0.22) 12%, rgba(155, 116, 247, 0.35) 50%, rgba(122, 61, 255, 0.22) 88%, transparent 100%);
+      }
+      .pixel-cat {
+        --cat-main: #b89cf5;
+        --cat-dark: #7a5fd4;
+        --cat-eye: #f8f7fa;
+        --cat-nose: #e8b8f2;
+        position: absolute;
+        bottom: 2px;
+        left: -30px;
+        width: 22px;
+        height: 16px;
+        image-rendering: pixelated;
+        animation: cat-travel 9s linear infinite;
+      }
+      .pixel-cat svg {
+        display: block;
+        width: 22px;
+        height: 16px;
+        overflow: visible;
+        transform: scaleX(-1);
+      }
+      .pixel-cat .cat-fill { fill: var(--cat-main); }
+      .pixel-cat .cat-shade { fill: var(--cat-dark); }
+      .pixel-cat .cat-eye { fill: var(--cat-eye); }
+      .pixel-cat .cat-nose { fill: var(--cat-nose); }
+      .pixel-cat .legs-a { animation: cat-step-a 0.4s steps(1) infinite; }
+      .pixel-cat .legs-b { animation: cat-step-b 0.4s steps(1) infinite; }
+      body[data-state="listening"] .pixel-cat,
+      body.is-transcribing .pixel-cat {
+        --cat-main: #7ec8dc;
+        --cat-dark: #4a9eb8;
+        --cat-nose: #b8e8f4;
+        animation-duration: 6.5s;
+      }
+      body[data-state="thinking"] .pixel-cat {
+        --cat-main: #a88af0;
+        --cat-dark: #6b52c4;
+        animation-duration: 7s;
+      }
+      body[data-state="talking"] .pixel-cat {
+        --cat-main: #dba8ec;
+        --cat-dark: #b070c8;
+        --cat-nose: #f4d4fc;
+        animation-duration: 5.5s;
+      }
+      body[data-state="offline"] .activity-track { opacity: 0.32; }
+      body[data-state="offline"] .pixel-cat {
+        --cat-main: #6a6678;
+        --cat-dark: #45424f;
+        --cat-nose: #8a8694;
+        animation-duration: 14s;
+      }
+      @keyframes cat-travel {
+        0% { left: -30px; transform: translateY(0); }
+        8% { transform: translateY(0); }
+        10% { transform: translateY(-7px); }
+        12% { transform: translateY(0); }
+        24% { transform: translateY(0); }
+        26% { transform: translateY(-5px); }
+        28% { transform: translateY(0); }
+        42% { transform: translateY(0); }
+        44% { transform: translateY(-8px); }
+        46% { transform: translateY(0); }
+        58% { transform: translateY(0); }
+        60% { transform: translateY(-6px); }
+        62% { transform: translateY(0); }
+        76% { transform: translateY(0); }
+        78% { transform: translateY(-4px); }
+        80% { transform: translateY(0); }
+        100% { left: calc(100% + 6px); transform: translateY(0); }
+      }
+      @keyframes cat-step-a {
+        0%, 49% { opacity: 1; }
+        50%, 100% { opacity: 0; }
+      }
+      @keyframes cat-step-b {
+        0%, 49% { opacity: 0; }
+        50%, 100% { opacity: 1; }
+      }
+
+      .music-controls {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 8px;
+        flex-shrink: 0;
+      }
+      body[data-task="music_local"] .music-controls,
+      body[data-can-control="true"] .music-controls { display: flex; }
+      body[data-task="music_local"] .activity-track,
+      body[data-can-control="true"] .activity-track { display: none; }
+      body[data-task="music_online"]:not([data-can-control="true"]) .activity-track { margin-top: 6px; }
+
+      .media-btn {
+        display: flex; align-items: center; justify-content: center;
+        width: 32px; height: 32px; border: 1px solid #2a2a34; border-radius: 50%;
+        background: #0a0a0e; color: #d8d5df; cursor: pointer; font-size: 11px;
+      }
+      .media-btn.play { width: 38px; height: 38px; border-color: #4a3870; background: #12101a; font-size: 13px; }
+      .media-btn:hover { border-color: #6b4fa8; }
+
+      .icon-btn:focus-visible, .control-capsule:focus-visible, .media-btn:focus-visible {
+        outline: 1px solid #9b74f7; outline-offset: -2px;
+      }
+
+      body[data-state="idle"] .mini-orb-ring { animation: ring-spin-slow 16s linear infinite; }
+      body[data-state="idle"] .mini-orb-glow { animation: glow-breathe 5s ease-in-out infinite; }
+      body[data-state="listening"] .mini-orb-ring,
+      body.is-transcribing .mini-orb-ring { animation: ring-spin-fast 2.2s linear infinite; }
+      body[data-state="listening"] .task-status,
+      body.is-transcribing .task-status { color: #8ed0e2; }
+      body[data-state="thinking"] .mini-orb-ring { animation: ring-spin-work 3.2s linear infinite; }
+      body[data-state="thinking"] .task-status { color: #b9a0f0; }
+      body[data-state="talking"] .mini-orb-ring { animation: ring-spin-work 2.8s linear infinite; }
+      body[data-state="talking"] .task-status { color: #e8b8f2; }
+      body[data-state="offline"] .task-status { color: #c98f8f; }
+
+      @keyframes ring-spin-slow { to { transform: rotate(360deg); } }
+      @keyframes ring-spin-fast { to { transform: rotate(360deg); } }
+      @keyframes ring-spin-work { to { transform: rotate(360deg); } }
+      @keyframes glow-breathe { 50% { opacity: 1; transform: scale(1.08); } }
+      @keyframes bar-talk { to { transform: scaleY(0.18); } }
+    </style>
+  </head>
+  <body data-state="idle" data-task="idle">
+    <section class="widget" aria-label="FRIDAY companion">
+      <div class="widget-top">
+        <div class="top-left">
+          <div class="mini-orb" aria-hidden="true">
+            <span class="mini-orb-glow"></span>
+            <span class="mini-orb-ring"></span>
+            <span class="mini-orb-core"></span>
+          </div>
+          <button class="icon-btn gear-btn" type="button" aria-label="Open FRIDAY app" title="Open FRIDAY">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="8" r="2.2"></circle>
+              <path d="M8 1.2v2.1M8 12.7v2.1M1.2 8h2.1M12.7 8h2.1M3.1 3.1l1.5 1.5M11.4 11.4l1.5 1.5M3.1 12.9l1.5-1.5M11.4 4.6l1.5-1.5"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="control-capsule" aria-label="Voice mode" title="Voice mode">
+          <span class="voice-mode-tip">Voice mode</span>
+          <div class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <svg class="mic" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="5.4" y="1.4" width="5.2" height="8.2" rx="2.6"></rect>
+            <path d="M3.4 7.5a4.6 4.6 0 0 0 9.2 0M8 12.1v2.2M5.6 14.3h4.8"></path>
+          </svg>
+          <span class="backend-dot checking" title="Connecting to backend…" aria-label="Backend connecting"></span>
+        </div>
+      </div>
+
+      <div class="task-panel">
+        <div class="task-status">Ready</div>
+        <div class="task-detail"><span class="transcript-live"></span><span class="transcript-cursor" hidden></span></div>
+        <div class="song-name" hidden></div>
+        <div class="music-controls" aria-label="Music controls">
+          <button class="media-btn" data-action="prev" type="button" aria-label="Previous">⏮</button>
+          <button class="media-btn play" data-action="play" type="button" aria-label="Play">▶</button>
+          <button class="media-btn" data-action="stop" type="button" aria-label="Stop">⏹</button>
+          <button class="media-btn" data-action="next" type="button" aria-label="Next">⏭</button>
+        </div>
+        <div class="activity-track" aria-hidden="true">
+          <div class="pixel-cat-scene">
+            <div class="pixel-cat-ground"></div>
+            <div class="pixel-cat">
+              <svg viewBox="0 0 11 8" shape-rendering="crispEdges" aria-hidden="true">
+                <rect class="cat-shade" x="9" y="3" width="1" height="1"/>
+                <rect class="cat-shade" x="10" y="4" width="1" height="1"/>
+                <rect class="cat-fill" x="2" y="0" width="1" height="1"/>
+                <rect class="cat-fill" x="6" y="0" width="1" height="1"/>
+                <rect class="cat-fill" x="1" y="1" width="7" height="1"/>
+                <rect class="cat-eye" x="2" y="2" width="1" height="1"/>
+                <rect class="cat-eye" x="5" y="2" width="1" height="1"/>
+                <rect class="cat-nose" x="3" y="2" width="1" height="1"/>
+                <rect class="cat-fill" x="1" y="2" width="1" height="1"/>
+                <rect class="cat-fill" x="4" y="2" width="1" height="1"/>
+                <rect class="cat-fill" x="6" y="2" width="1" height="1"/>
+                <rect class="cat-fill" x="7" y="2" width="1" height="1"/>
+                <rect class="cat-fill" x="2" y="3" width="5" height="1"/>
+                <rect class="cat-fill" x="1" y="4" width="7" height="1"/>
+                <g class="legs-a">
+                  <rect class="cat-shade" x="1" y="5" width="1" height="2"/>
+                  <rect class="cat-shade" x="4" y="5" width="1" height="2"/>
+                  <rect class="cat-shade" x="6" y="5" width="1" height="2"/>
+                </g>
+                <g class="legs-b">
+                  <rect class="cat-shade" x="2" y="5" width="1" height="2"/>
+                  <rect class="cat-shade" x="5" y="5" width="1" height="2"/>
+                  <rect class="cat-shade" x="7" y="5" width="1" height="2"/>
+                </g>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <script>
+      const phaseContent = {
+        listening: ["Listening", "Speak now…"],
+        thinking: ["Thinking", "Working on your request…"],
+        talking: ["Speaking", "FRIDAY is responding…"],
+        idle: ["Ready", "Press Alt+Space to start"],
+        offline: ["Offline", "Local service unavailable"],
+      };
+      const COMPANION_PHASES = new Set(["listening", "thinking", "talking", "transcribing"]);
+      const voiceStates = COMPANION_PHASES;
+      const OVERLAY_W_IDLE = 272;
+      const OVERLAY_W_WIDE = 420;
+      const OVERLAY_H_IDLE = 188;
+      const OVERLAY_H_MUSIC = 232;
+
+      let reconnectTimer;
+      let healthTimer;
+      let currentTask = { kind: "idle" };
+      let voiceSessionActive = false;
+      let companionSessionActive = false;
+      let ttsSpeaking = false;
+      let shutdownRequested = false;
+      let electronOverlayVisible = false;
+
+      const statusEl = document.querySelector(".task-status");
+      const detailEl = document.querySelector(".task-detail");
+      const transcriptEl = document.querySelector(".transcript-live");
+      const transcriptCursorEl = document.querySelector(".transcript-cursor");
+      let transcriptTarget = "";
+      let transcriptShown = "";
+      let typewriterTimer = null;
+      const songEl = document.querySelector(".song-name");
+      const playBtn = document.querySelector('.media-btn[data-action="play"]');
+      const micControl = document.querySelector(".control-capsule");
+      const backendDot = document.querySelector(".backend-dot");
+      const voiceModeTip = document.querySelector(".voice-mode-tip");
+      const gearBtn = document.querySelector(".gear-btn");
+      let backendDotState = "checking";
+      let wsConnected = false;
+
+      function setBackendDot(state) {
+        if (!backendDot || backendDotState === state) return;
+        backendDotState = state;
+        backendDot.classList.remove("checking", "online", "offline");
+        backendDot.classList.add(state);
+        const titles = {
+          checking: "Backend connecting…",
+          online: "Backend online",
+          offline: "Backend offline",
+        };
+        const label = titles[state] || "Backend status";
+        backendDot.title = label;
+        backendDot.setAttribute("aria-label", label);
+      }
+
+      function resolveBackendDot(health) {
+        if (!health?.ok) {
+          setBackendDot("offline");
+          return;
+        }
+        const d = health.data || {};
+        const backendStatus = d.backend_status || d.status;
+        if (backendStatus === "online") {
+          setBackendDot("online");
+          return;
+        }
+        if (backendStatus === "starting") {
+          setBackendDot("checking");
+          return;
+        }
+        setBackendDot("offline");
+      }
+
+      async function fetchHealth(timeoutMs = 15000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const r = await fetch("http://127.0.0.1:8000/health", {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          const data = await r.json().catch(() => ({}));
+          return { ok: r.ok, status: data.status, ready: data.ready !== false, data };
+        } catch {
+          return { ok: false, status: "offline", ready: false, data: null };
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      function normalizeCompanionPhase(state) {
+        if (state === "thinking" || state === "processing") return "thinking";
+        if (state === "talking" || state === "speaking") return "talking";
+        if (state === "transcribing") return "listening";
+        if (state === "listening" || state === "idle_listening") return "listening";
+        if (COMPANION_PHASES.has(state)) return state;
+        return state === "offline" ? "offline" : "idle";
+      }
+
+      function isVoiceActive(state) {
+        return COMPANION_PHASES.has(state);
+      }
+
+      function isSessionLive() {
+        if (ttsSpeaking) return true;
+        if (voiceSessionActive) return true;
+        if (document.body.classList.contains("is-transcribing")) return true;
+        const state = document.body.dataset.state || "idle";
+        return companionSessionActive && COMPANION_PHASES.has(state);
+      }
+
+      function setCompanionPhase(phase, detailOverride) {
+        const normalized = normalizeCompanionPhase(phase);
+        if (!COMPANION_PHASES.has(normalized)) {
+          document.body.dataset.state = normalized;
+          voiceSessionActive = false;
+          const copy = phaseContent[normalized] || phaseContent.idle;
+          statusEl.textContent = copy[0];
+          if (!document.body.classList.contains("is-transcribing") && transcriptEl) {
+            transcriptEl.textContent = detailOverride || copy[1];
+          }
+          updateCapsuleLabel();
+          return;
+        }
+        document.body.dataset.state = normalized;
+        voiceSessionActive = true;
+        const copy = phaseContent[normalized];
+        statusEl.textContent = copy[0];
+        if (!document.body.classList.contains("is-transcribing")) {
+          if (normalized === "listening" && companionSessionActive) {
+            const hint = detailOverride || copy[1];
+            transcriptTarget = hint;
+            transcriptShown = hint;
+            if (transcriptEl) transcriptEl.textContent = hint;
+          } else if (normalized !== "listening" || !companionSessionActive) {
+            clearLiveTranscript();
+            if (transcriptEl) transcriptEl.textContent = detailOverride || copy[1];
+          }
+        }
+        updateCapsuleLabel();
+      }
+
+      function updateCapsuleLabel() {
+        let tip = "Voice mode — tap to speak";
+        let label = "Voice mode — tap to speak";
+        if (ttsSpeaking) {
+          tip = "Voice mode — tap to end speaking";
+          label = "Voice mode — end speaking";
+        } else if (isSessionLive()) {
+          tip = "Voice mode — tap to end session";
+          label = "Voice mode — end session";
+        }
+        if (voiceModeTip) voiceModeTip.textContent = "Voice mode";
+        micControl.setAttribute("aria-label", label);
+        micControl.title = tip;
+      }
+
+      function setOverlayBounds(width, height) {
+        document.documentElement.style.width = width + "px";
+        document.body.style.width = width + "px";
+        document.documentElement.style.height = height + "px";
+        document.body.style.height = height + "px";
+        const widget = document.querySelector(".widget");
+        if (widget) {
+          widget.style.width = width + "px";
+          widget.style.minHeight = height + "px";
+        }
+        document.body.classList.toggle("is-wide", width > OVERLAY_W_IDLE + 8);
+        if (window.fridayOverlay?.setOverlayBounds) {
+          window.fridayOverlay.setOverlayBounds(width, height);
+        } else {
+          window.fridayOverlay?.setOverlayHeight(height);
+        }
+      }
+
+      function setOverlayHeight(h) {
+        setOverlayBounds(OVERLAY_W_IDLE, h);
+      }
+
+      function renderTranscriptLine() {
+        if (!transcriptEl) return;
+        transcriptEl.textContent = transcriptShown;
+        if (transcriptCursorEl) {
+          const active = document.body.classList.contains("is-transcribing");
+          transcriptCursorEl.hidden = !active || !transcriptShown;
+        }
+      }
+
+      function clearLiveTranscript() {
+        transcriptTarget = "";
+        transcriptShown = "";
+        if (typewriterTimer) {
+          clearTimeout(typewriterTimer);
+          typewriterTimer = null;
+        }
+        document.body.classList.remove("is-transcribing");
+        if (transcriptEl) transcriptEl.textContent = "";
+        if (transcriptCursorEl) transcriptCursorEl.hidden = true;
+      }
+
+      function tickTypewriter() {
+        if (transcriptShown.length < transcriptTarget.length) {
+          const remaining = transcriptTarget.length - transcriptShown.length;
+          const step = Math.max(1, Math.min(4, Math.ceil(remaining / 6)));
+          transcriptShown = transcriptTarget.slice(0, transcriptShown.length + step);
+          renderTranscriptLine();
+          typewriterTimer = setTimeout(tickTypewriter, 24);
+          return;
+        }
+        transcriptShown = transcriptTarget;
+        renderTranscriptLine();
+        typewriterTimer = null;
+      }
+
+      function setLiveTranscript(text, { countdown, phase } = {}) {
+        const preview = (text || "").trim();
+        document.body.dataset.state = "listening";
+        document.body.classList.add("is-transcribing");
+        voiceSessionActive = true;
+        companionSessionActive = true;
+        statusEl.textContent = "Listening";
+        updateCapsuleLabel();
+
+        if (preview) {
+          transcriptTarget = preview;
+          const wide = preview.length > 34 || preview.includes("\n");
+          setOverlayBounds(wide ? OVERLAY_W_WIDE : OVERLAY_W_IDLE, OVERLAY_H_IDLE);
+          if (!typewriterTimer) tickTypewriter();
+          else if (preview.length < transcriptShown.length) {
+            transcriptShown = preview;
+            renderTranscriptLine();
+          }
+          return;
+        }
+
+        if (countdown > 0) {
+          transcriptTarget = `Finishing in ${countdown}s…`;
+          transcriptShown = transcriptTarget;
+          renderTranscriptLine();
+          return;
+        }
+        if (phase === "open") {
+          transcriptTarget = "Speak now…";
+          transcriptShown = "Speak now…";
+          renderTranscriptLine();
+          return;
+        }
+        if (phase === "hearing") {
+          transcriptTarget = transcriptTarget || "…";
+          if (!transcriptShown) {
+            transcriptShown = "…";
+            renderTranscriptLine();
+          }
+        }
+      }
+
+      function applyVoiceLabels(state, detailOverride) {
+        if (document.body.classList.contains("is-transcribing") && transcriptTarget) {
+          statusEl.textContent = "Listening";
+          return;
+        }
+        setCompanionPhase(state, detailOverride);
+      }
+
+      function scheduleHealthPoll() {
+        clearInterval(healthTimer);
+        const interval = ttsSpeaking ? 1200 : 10000;
+        healthTimer = setInterval(syncFromHealth, interval);
+      }
+
+      function setSpeakingOutput(active) {
+        const wasSpeaking = ttsSpeaking;
+        ttsSpeaking = Boolean(active);
+        micControl.classList.toggle("speaking-output", ttsSpeaking);
+        if (wasSpeaking !== ttsSpeaking) scheduleHealthPoll();
+        updateCapsuleLabel();
+        if (!ttsSpeaking && document.body.dataset.state === "talking") {
+          setCompanionPhase("listening");
+        }
+      }
+
+      function setVoiceState(next) {
+        if (companionSessionActive) {
+          setCompanionPhase(next);
+          return;
+        }
+        const phase = normalizeCompanionPhase(next);
+        document.body.dataset.state = phase;
+        voiceSessionActive = COMPANION_PHASES.has(phase);
+        updateCapsuleLabel();
+        if (COMPANION_PHASES.has(phase)) {
+          applyVoiceLabels(phase);
+        } else if (currentTask.kind === "task") {
+          statusEl.textContent = currentTask.title || "Ready";
+          detailEl.textContent = currentTask.detail || "";
+        } else {
+          applyVoiceLabels(phase);
+        }
+      }
+
+      function applyMusicSurface(task) {
+        const isLocal = task.kind === "music_local";
+        setOverlayBounds(OVERLAY_W_IDLE, isLocal ? OVERLAY_H_MUSIC : OVERLAY_H_IDLE);
+        document.body.dataset.canControl = task.can_control ? "true" : "false";
+        statusEl.textContent = task.title || "Now playing";
+        detailEl.textContent = task.detail || (isLocal ? "Local music" : "Online");
+        songEl.hidden = false;
+        songEl.textContent = task.song || "";
+        if (task.can_control) {
+          playBtn.textContent = task.is_playing ? "⏸" : "▶";
+          playBtn.dataset.action = task.is_playing ? "pause" : "play";
+        }
+      }
+
+      function voiceUiLocked() {
+        const state = document.body.dataset.state || "idle";
+        return (
+          document.body.classList.contains("is-transcribing")
+          || (companionSessionActive && COMPANION_PHASES.has(state))
+        );
+      }
+
+      function applyCompanionTask(task) {
+        currentTask = task || { kind: "idle" };
+        const kind = task?.kind || "idle";
+        document.body.dataset.task = kind;
+        document.body.dataset.canControl = task?.can_control ? "true" : "false";
+        const state = document.body.dataset.state || "idle";
+
+        if (voiceUiLocked() && kind !== "music_local" && kind !== "music_online") {
+          return;
+        }
+
+        if (
+          kind !== "listening"
+          && kind !== "music_local"
+          && kind !== "music_online"
+          && companionSessionActive
+          && COMPANION_PHASES.has(state)
+        ) {
+          return;
+        }
+
+        if (kind === "music_local" || (kind === "music_online" && task.can_control)) {
+          companionSessionActive = false;
+          clearLiveTranscript();
+          applyMusicSurface(task);
+          return;
+        }
+
+        if (kind === "flash") {
+          setOverlayBounds(OVERLAY_W_WIDE, OVERLAY_H_IDLE);
+          statusEl.textContent = task.title || "";
+          detailEl.textContent = task.detail || "";
+          songEl.hidden = true;
+          return;
+        }
+
+        if (kind === "hearing") {
+          setOverlayBounds(OVERLAY_W_IDLE, OVERLAY_H_IDLE);
+          companionSessionActive = true;
+          if (companionSessionActive) {
+            setCompanionPhase("listening", "Speak now…");
+            activateVoice();
+          } else {
+            statusEl.textContent = task.title || "Hearing";
+            detailEl.textContent = task.detail || "Say “Hey FRIDAY”…";
+          }
+          songEl.hidden = true;
+          return;
+        }
+
+        if (kind === "listening") {
+          setOverlayBounds(OVERLAY_W_IDLE, OVERLAY_H_IDLE);
+          companionSessionActive = true;
+          if (!document.body.classList.contains("is-transcribing")) {
+            setCompanionPhase("listening");
+          }
+          return;
+        }
+
+        if (kind === "music_online") {
+          setOverlayBounds(OVERLAY_W_IDLE, OVERLAY_H_IDLE);
+          statusEl.textContent = task.title || "Now playing";
+          detailEl.textContent = (task.platform || "online").replace(/_/g, " ");
+          songEl.hidden = false;
+          songEl.textContent = task.song || "";
+          return;
+        }
+
+        setOverlayBounds(OVERLAY_W_IDLE, OVERLAY_H_IDLE);
+        songEl.hidden = true;
+        songEl.textContent = "";
+
+        if (kind === "task") {
+          statusEl.textContent = task.title || "Working";
+          detailEl.textContent = task.detail || "";
+          return;
+        }
+
+        applyVoiceLabels(state);
+      }
+
+      function setCompanionVisible(visible) {
+        if (visible) {
+          document.body.classList.remove("is-hiding");
+          requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add("is-visible")));
+          return;
+        }
+        document.body.classList.remove("is-visible");
+        document.body.classList.add("is-hiding");
+      }
+
+      async function syncFromHealth() {
+        try {
+          const health = await fetchHealth();
+          resolveBackendDot(health);
+          if (!health.ok) throw new Error("Unavailable");
+          const d = health.data || {};
+          setSpeakingOutput(d.tts_active);
+          const micActive = Boolean(
+            d.mic_active || d.state === "listening" || d.state === "transcribing"
+          );
+          if (companionSessionActive) {
+            if (d.tts_active) {
+              setCompanionPhase("talking");
+            } else if (document.body.classList.contains("is-transcribing")) {
+              /* keep live transcript */
+            } else if (micActive || d.state === "idle_listening") {
+              setCompanionPhase("listening");
+            } else if (d.state === "thinking") {
+              setCompanionPhase("thinking");
+            } else {
+              setCompanionPhase("idle");
+            }
+          } else {
+            setVoiceState(d.state || "idle");
+          }
+          if (
+            !electronOverlayVisible
+            && d.companion_collapsed
+            && !d.companion_mode
+            && (d.companion_task?.kind || "idle") === "idle"
+          ) {
+            setCompanionVisible(false);
+            dismissSessionLocal();
+          } else if (d.companion_task) {
+            applyCompanionTask(d.companion_task);
+          }
+        } catch {
+          setBackendDot("offline");
+          setVoiceState("offline");
+        }
+      }
+
+      function connect() {
+        const ws = new WebSocket("ws://127.0.0.1:8000/ws");
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+
+            if (data.type === "partial_transcript") {
+              setLiveTranscript(data.text || "", {
+                countdown: data.countdown,
+                phase: data.phase,
+              });
+              return;
+            }
+
+            if (data.type === "transcript_clear") {
+              clearLiveTranscript();
+              if (companionSessionActive) setCompanionPhase("listening");
+              return;
+            }
+
+            if (data.type === "user_message" && data.text) {
+              clearLiveTranscript();
+              companionSessionActive = true;
+              setCompanionPhase("thinking", data.text);
+              return;
+            }
+
+            if (data.type === "tts_active") {
+              setSpeakingOutput(data.active);
+              if (data.active) setCompanionPhase("talking");
+              return;
+            }
+            if (data.type === "backend_status") {
+              resolveBackendDot({
+                ok: true,
+                data: {
+                  status: data.backend_status === "online" ? "online" : data.status,
+                  backend_status: data.backend_status,
+                  stt_ready: data.stt_ready,
+                },
+              });
+              return;
+            }
+            if (data.type === "tts_stopped") {
+              setSpeakingOutput(false);
+              if (companionSessionActive) setCompanionPhase("listening");
+              return;
+            }
+            if (data.state && companionSessionActive) {
+              if (
+                data.state !== "transcribing"
+                && !document.body.classList.contains("is-transcribing")
+              ) {
+                setCompanionPhase(data.state);
+              }
+            } else if (data.state) {
+              setVoiceState(data.state);
+            }
+            if (data.type === "tts_started") {
+              setSpeakingOutput(true);
+              setCompanionPhase("talking");
+            }
+            if (data.type === "companion_hotkey") {
+              if (data.action === "close") {
+                setCompanionVisible(false);
+                dismissSessionLocal();
+                return;
+              }
+              setCompanionVisible(true);
+              companionSessionActive = true;
+              setLiveTranscript("", { phase: "open" });
+              return;
+            }
+            if (data.type === "companion_mode" && data.active === true) {
+              /* Session becomes live only when listening starts (mic / hotkey). */
+            }
+            if (data.type === "companion_mode" && data.active === false) {
+              setCompanionVisible(false);
+              dismissSessionLocal();
+              return;
+            }
+            if (data.type === "companion_dismissed") {
+              setCompanionVisible(false);
+              dismissSessionLocal();
+              return;
+            }
+
+            if (data.type === "companion_task") applyCompanionTask(data);
+          } catch {}
+        };
+        ws.onopen = () => {
+          wsConnected = true;
+          syncFromHealth();
+        };
+        ws.onclose = () => {
+          wsConnected = false;
+          setBackendDot("checking");
+          syncFromHealth();
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(connect, 1500);
+        };
+        ws.onerror = () => ws.close();
+      }
+
+      async function activateVoice() {
+        companionSessionActive = true;
+        setCompanionPhase("listening");
+        try {
+          const r = await fetch("http://127.0.0.1:8000/companion/listen", { method: "POST" });
+          if (!r.ok) throw new Error("listen failed");
+        } catch {
+          setVoiceState("offline");
+        }
+      }
+
+      function dismissSessionLocal() {
+        currentTask = { kind: "idle" };
+        document.body.dataset.task = "idle";
+        companionSessionActive = false;
+        clearLiveTranscript();
+        setOverlayHeight(OVERLAY_H_IDLE);
+        setSpeakingOutput(false);
+        setCompanionPhase("idle");
+        setOverlayBounds(OVERLAY_W_IDLE, OVERLAY_H_IDLE);
+        songEl.hidden = true;
+        songEl.textContent = "";
+      }
+
+      function dismissSession() {
+        if (shutdownRequested) return;
+        shutdownRequested = true;
+        dismissSessionLocal();
+        setCompanionVisible(false);
+        window.fridayOverlay?.shutdownFriday?.();
+      }
+
+      function onCapsuleClick() {
+        if (isSessionLive()) {
+          dismissSession();
+          return;
+        }
+        activateVoice();
+      }
+
+      async function mediaAction(action) {
+        try {
+          const r = await fetch(`http://127.0.0.1:8000/companion/media/${action}`, { method: "POST" });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || d.status === "error") {
+            console.warn("Media control failed:", d.message || r.status);
+            return;
+          }
+          if (action === "stop") {
+            applyCompanionTask({ kind: "idle", title: "Ready", detail: "Tap mic to talk" });
+            return;
+          }
+          const platform = d.platform || currentTask.platform || "local";
+          const isLocal = platform === "local";
+          applyCompanionTask({
+            kind: isLocal ? "music_local" : "music_online",
+            title: d.is_playing ? "Now playing" : "Paused",
+            detail: isLocal ? "Local music" : platform.replace(/_/g, " "),
+            song: d.song || currentTask.song || "",
+            platform,
+            is_playing: Boolean(d.is_playing),
+            can_control: d.can_control !== false,
+          });
+        } catch (err) {
+          console.warn("Media control error:", err);
+        }
+      }
+
+      gearBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.fridayOverlay?.openMainApp();
+      });
+
+      micControl.tabIndex = 0;
+      micControl.setAttribute("role", "button");
+      micControl.addEventListener("click", (e) => { e.stopPropagation(); onCapsuleClick(); });
+      micControl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onCapsuleClick(); }
+      });
+
+      document.querySelectorAll(".media-btn").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const action = btn.dataset.action;
+          if (action === "play" || action === "pause") {
+            mediaAction(playBtn.dataset.action === "pause" ? "pause" : "play");
+          } else {
+            mediaAction(action);
+          }
+        });
+      });
+
+      window.fridayOverlay?.onVisibility((visible) => {
+        electronOverlayVisible = Boolean(visible);
+        setCompanionVisible(visible);
+      });
+      setOverlayHeight(OVERLAY_H_IDLE);
+      updateCapsuleLabel();
+      syncFromHealth();
+      connect();
+      scheduleHealthPoll();
+      window.fridayOverlay?.notifyReady();
+    </script>
+  </body>
+</html>

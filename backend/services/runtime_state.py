@@ -49,13 +49,26 @@ class RuntimeFlags:
     is_listening: bool = False
     mic_muted: bool = False
     force_listen_trigger: bool = False
+    pending_ui_listen: bool = False
     stop_listen_trigger: bool = False
     continuous_voice_mode: bool = False
+    companion_mode: bool = False
+    companion_hotkey_seq: int = 0
+    companion_hotkey_last_action: str = "open"  # "open" | "close"
+    companion_surface_collapsed: bool = False
+    relisten_hold_until: float = 0.0
+    stt_consecutive_failures: int = 0
+    stt_mic_paused_until: float = 0.0
+    voice_turn: bool = False
+    tts_spoke_this_turn: bool = False
     last_request_time: float = 0.0
     last_response_time: float = 0.0
     last_user_input: str = ""
     processed_ids: set[str] = field(default_factory=set)
     session_registry: dict[str, str] = field(default_factory=dict)
+    backend_ready: bool = False
+    stt_ready: bool = False
+    stt_provider: str = "local"
 
 
 flags = RuntimeFlags()
@@ -72,6 +85,15 @@ def bind_ws_manager(manager: ConnectionManager) -> None:
     _ws_manager = manager
 
 
+def backend_status_label() -> str:
+    """Canonical status for desktop + companion dots: online | starting | offline."""
+    # /health is only reachable once HTTP is up — report online so the UI does
+    # not stay on STARTING while STT/TTS warm up in the background.
+    if flags.backend_ready:
+        return "online"
+    return "starting"
+
+
 async def set_state(new_state: SystemState) -> None:
     """Update system state and broadcast to connected WebSocket clients."""
     global _current_state
@@ -81,6 +103,12 @@ async def set_state(new_state: SystemState) -> None:
     if _ws_manager is not None:
         await _ws_manager.broadcast_state(new_state.value)
     logger.info("State → %s", new_state.name)
+    try:
+        from services.companion_state import on_runtime_state_change
+
+        await on_runtime_state_change(new_state)
+    except Exception as exc:
+        logger.debug("Companion surface sync skipped: %s", exc)
 
 
 def get_state() -> SystemState:
@@ -114,13 +142,21 @@ def unregister_sessions_for_thread(thread_id: str) -> int:
     return len(stale)
 
 
-def reset_processing_state() -> None:
-    """Reset voice/processing flags (used by /reset and watchdog)."""
+def reset_processing_state(*, keep_companion_mode: bool = True) -> None:
+    """Reset voice/processing flags (used by /stop-trigger and watchdog)."""
     flags.force_listen_trigger = False
-    flags.stop_listen_trigger = True
-    flags.continuous_voice_mode = False
+    flags.pending_ui_listen = False
     flags.is_processing = False
+    flags.is_listening = False
     stop_event.set()
+    if keep_companion_mode and flags.companion_mode:
+        flags.stop_listen_trigger = False
+        flags.continuous_voice_mode = True
+    else:
+        flags.stop_listen_trigger = True
+        flags.continuous_voice_mode = False
+        if not keep_companion_mode:
+            flags.companion_mode = False
 
 
 def new_response_id() -> str:

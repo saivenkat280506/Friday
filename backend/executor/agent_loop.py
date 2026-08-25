@@ -65,5 +65,11 @@ class AgentLoop:
         # Note: coroutines cannot be reused, so we expect a callable that returns a coro
         self.retry_queue.append(( "retry_" + str(int(time.time())), coro, 0, metadata))
 
+    def clear_retry_queue(self) -> int:
+        """Drop pending background retries (companion dismiss / hard stop)."""
+        count = len(self.retry_queue)
+        self.retry_queue.clear()
+        return count
+
 # Global instance
 agent_loop = AgentLoop()

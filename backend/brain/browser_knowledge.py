@@ -36,6 +36,24 @@ SITE_RECIPES: list[dict[str, str]] = [
         "steps": "Use control-button-play/pause/skip-forward/skip-back data-testid buttons",
         "selectors": "[data-testid='control-button-play'], [data-testid='control-button-pause']",
     },
+    {
+        "site": "spotify",
+        "task": "volume",
+        "steps": "Drag volume-bar slider to desired percent (human mouse drag)",
+        "selectors": "[data-testid='volume-bar'], input[type='range']",
+    },
+    {
+        "site": "chatgpt",
+        "task": "send prompt",
+        "steps": "GOTO chatgpt.com, TYPE into #prompt-textarea, PRESS Enter or click send",
+        "selectors": "#prompt-textarea, button[data-testid='send-button']",
+    },
+    {
+        "site": "news",
+        "task": "research",
+        "steps": "SEARCH on news.google.com, SCROLL with reading pauses, stay same tab",
+        "selectors": "article h3, article a",
+    },
 ]
 
 

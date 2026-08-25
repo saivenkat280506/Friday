@@ -140,6 +140,22 @@ TOOLS: tuple[Tool, ...] = (
         },
     ),
     _tool(
+        "open_vscode_new_project",
+        "Open Visual Studio Code in a new window with a fresh empty project folder (not an existing workspace).",
+        ToolCategory.APPLICATION,
+        SafetyLevel.LOW,
+        {
+            "type": "object",
+            "properties": {
+                "project_name": {
+                    "type": "string",
+                    "description": "Optional folder name for the new project",
+                }
+            },
+            "required": [],
+        },
+    ),
+    _tool(
         "window_focus",
         "Bring an application window to the foreground.",
         ToolCategory.APPLICATION,

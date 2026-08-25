@@ -71,7 +71,7 @@
     },
     {
       "name": "play_music",
-      "description": "Play a song on Spotify Web, YouTube, or YouTube Music. Infer platform from phrases like 'on spotify', 'on youtube', or 'on youtube music'. If the user says only 'play music' with no song, default to AC/DC Back in Black on Spotify Web (browser, not desktop app).",
+      "description": "Play a song on Spotify Web, YouTube, YouTube Music, or local audio. Infer platform from phrases like 'on spotify', 'on youtube', or 'from local'. If the user says only 'play music' with no song, play the most recent local track from Music, Downloads, or Downloads/Audio (skipping voice clips).",
       "category": "media",
       "safety_level": "low",
       "requires_confirmation": false,
@@ -86,8 +86,8 @@
           },
           "platform": {
             "type": "string",
-            "enum": ["spotify", "youtube", "youtube_music"],
-            "description": "Streaming platform. Defaults to spotify."
+            "enum": ["local", "spotify", "youtube", "youtube_music"],
+            "description": "Playback source. Defaults to the user's most recent local music file when no song is named."
           }
         },
         "required": []

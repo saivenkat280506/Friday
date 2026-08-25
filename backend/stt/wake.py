@@ -11,6 +11,8 @@ from faster_whisper import WhisperModel
 import queue
 import time as time_module
 
+from stt.stt import _resolve_input_device
+
 # Configuration
 MODEL_SIZE = "tiny.en"
 SAMPLE_RATE = 16000
@@ -47,21 +49,26 @@ def wait_for_wake_word(stop_check=None, barge_in_callback=None) -> bool:
 
 
 
+    input_device = _resolve_input_device()
+    stream_kwargs = dict(
+        samplerate=SAMPLE_RATE,
+        channels=1,
+        dtype="float32",
+        blocksize=2048,
+        latency="high",
+        callback=audio_callback,
+    )
+    if input_device is not None:
+        stream_kwargs["device"] = input_device
+
     try:
-        with sd.InputStream(
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            dtype="float32",
-            blocksize=2048,
-            latency="high",
-            callback=audio_callback,
-        ):
+        with sd.InputStream(**stream_kwargs):
             audio_buffer: list[float] = []
             target_samples = SAMPLE_RATE * CHUNK_DURATION
 
             while True:
                 if stop_check and stop_check():
-                    return True  # Triggered by UI!
+                    return False  # Mic reserved by UI — not a wake phrase
 
                 # --- Fill buffer up to one CHUNK_DURATION of audio ---
                 # --- Fill buffer up to one CHUNK_DURATION of audio ---

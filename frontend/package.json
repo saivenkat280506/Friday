@@ -12,6 +12,8 @@
     "start": "next start",
     "lint": "eslint",
     "desktop": "electron desktop/main.js",
+    "desktop:overlay": "electron desktop/main.js",
+    "desktop:full": "concurrently -k -n web,electron -c cyan,magenta \"npm run dev:web\" \"wait-on http://127.0.0.1:3000 && electron desktop/main.js\"",
     "package-desktop": "node ../scripts/package-desktop.js"
   },
   "dependencies": {

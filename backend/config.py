@@ -16,8 +16,9 @@ class Settings(BaseSettings):
     STT_API_KEY: str = ""
     HF_TOKEN: str = ""
 
-    # Model settings
+    # Model settings — fast default; heavy used for search/headlines/planning
     LLM_MODEL: str = "llama-3.1-8b-instant"
+    LLM_MODEL_HEAVY: str = "llama-3.3-70b-versatile"
 
     # TTS — pocket_tts only, cloned from friday-voice.wav (see FRIDAY_VOICE_PATH).
     CLOUD_TTS_PROVIDER: str = "pocket"
@@ -29,6 +30,20 @@ class Settings(BaseSettings):
     STT_MODEL: str = "medium.en"
     STT_DEVICE: str = "cpu"
     STT_COMPUTE_TYPE: str = "int8"
+    # Input device index for sounddevice (-1 = system default). Set in .env if mic is wrong.
+    STT_INPUT_DEVICE: int = -1
+    STT_VAD_MODE: int = 1
+    STT_SPEECH_RMS: int = 55
+    # Seconds of silence after you stop speaking before the mic closes (~1s default).
+    STT_SILENCE_TIMEOUT_S: float = 1.25
+    # How long to keep the mic open waiting for the first word (companion hotkey).
+    STT_PRE_SPEECH_TIMEOUT_S: float = 15.0
+    # Speech RMS must exceed ambient noise floor by this factor (rejects TV/room chatter).
+    STT_SPEECH_SNR_MULT: float = 1.6
+    # Fast on-device model for live companion partials (final uses Groq or STT_MODEL).
+    STT_PARTIAL_MODEL: str = "tiny.en"
+    # auto = Groq Whisper when GROQ_API_KEY is set, else local Faster-Whisper
+    STT_PROVIDER: str = "auto"
 
     # Browser agent (Puppeteer sidecar)
     BROWSER_AGENT_PORT: int = 9477

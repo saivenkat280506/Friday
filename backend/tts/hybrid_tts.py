@@ -13,24 +13,24 @@ _is_speaking = False
 _current_response_id = None
 
 
-async def speak_hybrid(text: str, is_smart: bool = False, response_id: str = None):
+async def speak_hybrid(text: str, is_smart: bool = False, response_id: str = None) -> bool:
     global _is_speaking, _current_response_id
 
     clean_text = text.strip() if text else ""
     if not clean_text or len(clean_text) < 2 or clean_text in ["...", "."]:
         print(f"[TTS] Skipping empty/short text: {clean_text!r}")
-        return
+        return False
 
     if _is_speaking:
-        return
+        return False
 
     if response_id and response_id == _current_response_id:
-        return
+        return False
 
     from brain.settings import is_muted
     if is_muted():
         print("[TTS] Skipped — voice is muted in settings")
-        return
+        return False
 
     try:
         _is_speaking = True
@@ -42,10 +42,14 @@ async def speak_hybrid(text: str, is_smart: bool = False, response_id: str = Non
         ok = await asyncio.to_thread(pocket_speak, clean_text)
         if ok:
             print("[TTS] pocket_tts succeeded")
-        else:
-            print("[TTS] pocket_tts failed — no fallback (pocket-only mode)")
+            return True
+        print("[TTS] pocket_tts failed — no fallback (pocket-only mode)")
+        _current_response_id = None
+        return False
     except Exception as exc:
         print(f"[TTS] pocket_tts error: {exc}")
+        _current_response_id = None
+        return False
     finally:
         _is_speaking = False
 
@@ -110,7 +114,7 @@ class StreamingTtsBuffer:
 
     # Split only on real sentence endings — not ellipses (they cause choppy gaps).
     _SENTENCE_END = re.compile(r'(?<![.])[.!?]+[\s"\')]*')
-    _BATCH_CHAR_LIMIT = 80
+    _BATCH_CHAR_LIMIT = 120
 
     def __init__(self, on_first_sentence=None) -> None:
         self._buffer = ""
@@ -119,6 +123,8 @@ class StreamingTtsBuffer:
         self._stop_thread: threading.Thread | None = None
         self._on_first_sentence = on_first_sentence
         self._first_sentence_fired = False
+        self._batch_pending: list[str] = []
+        self._batch_chars = 0
 
     def start(self) -> None:
         if self._active:
@@ -145,6 +151,41 @@ class StreamingTtsBuffer:
 
         return clean_text_for_speech(text)
 
+    def _fire_first_sentence_hook(self) -> None:
+        if self._first_sentence_fired or not self._on_first_sentence:
+            return
+        self._first_sentence_fired = True
+        try:
+            self._on_first_sentence()
+        except Exception:
+            pass
+
+    def _flush_batch(self, *, force: bool = False) -> None:
+        if not self._batch_pending:
+            return
+        if not force and self._batch_chars < self._BATCH_CHAR_LIMIT:
+            return
+        batch = " ".join(self._batch_pending).strip()
+        self._batch_pending.clear()
+        self._batch_chars = 0
+        if len(batch) >= 2:
+            stream_sentence(batch)
+            self._spoken += batch + " "
+
+    def _queue_for_tts(self, sentence: str) -> None:
+        if len(sentence) < 3:
+            return
+        if not self._first_sentence_fired:
+            self._fire_first_sentence_hook()
+            stream_sentence(sentence)
+            self._spoken += sentence + " "
+            return
+
+        self._batch_pending.append(sentence)
+        self._batch_chars += len(sentence)
+        if self._batch_chars >= self._BATCH_CHAR_LIMIT or len(self._batch_pending) >= 2:
+            self._flush_batch(force=True)
+
     def _emit_complete_sentences(self) -> None:
         while True:
             match = self._SENTENCE_END.search(self._buffer)
@@ -155,28 +196,41 @@ class StreamingTtsBuffer:
             self._buffer = self._buffer[end:].lstrip()
             sentence = self._sanitize_clause(sentence)
             if len(sentence) >= 3:
-                if not self._first_sentence_fired and self._on_first_sentence:
-                    self._first_sentence_fired = True
-                    try:
-                        self._on_first_sentence()
-                    except Exception:
-                        pass
-                stream_sentence(sentence)
-                self._spoken += sentence + " "
+                self._queue_for_tts(sentence)
+
+    def cancel(self) -> None:
+        """Abort buffered streaming TTS immediately (e.g. app closed mid-response)."""
+        self._buffer = ""
+        self._spoken = ""
+        self._active = False
+        try:
+            from tts.pocket_tts import stop_speech
+
+            stop_speech()
+        except Exception:
+            pass
 
     def finish(self) -> None:
         if not self._active:
             return
+        from services.runtime_state import flags, stop_event
+
+        if flags.stop_listen_trigger or stop_event.is_set():
+            self.cancel()
+            return
         remaining = (self._buffer or "").strip()
         self._buffer = ""
-        full = self._sanitize_clause((self._spoken + remaining).strip())
-        if len(full) >= 2:
-            if len(full) <= self._BATCH_CHAR_LIMIT and not self._spoken:
-                stream_sentence(full)
-            elif remaining:
-                clause = self._sanitize_clause(remaining)
-                if len(clause) >= 2:
+        if remaining:
+            clause = self._sanitize_clause(remaining)
+            if len(clause) >= 2:
+                if not self._first_sentence_fired:
+                    self._fire_first_sentence_hook()
                     stream_sentence(clause)
+                    self._spoken += clause + " "
+                else:
+                    self._batch_pending.append(clause)
+                    self._batch_chars += len(clause)
+        self._flush_batch(force=True)
         self._spoken = ""
         self._active = False
 

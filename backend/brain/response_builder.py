@@ -119,8 +119,8 @@ BANKS = {
 
     # ── Intro ───────────────────────────────────────────────────────────────────
     "intro": [
-        "F.R.I.D.A.Y. online, Boss. Tony's replacement for J.A.R.V.I.S. "
-        "Apps, web intel, music, messages, autonomous ops — say the word.",
+        "Here's my introduction, Boss.",
+        "Allow me to introduce myself, Boss.",
     ],
 
     # ── Focus / Window ──────────────────────────────────────────────────────────

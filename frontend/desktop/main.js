@@ -1,33 +1,398 @@
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, globalShortcut } = require("electron");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawn, exec } = require("child_process");
 const http = require("http");
 const net = require("net");
 const fs = require("fs");
 
 const PROJECT_ROOT = path.join(__dirname, "../..");
 const BACKEND_DIR = path.join(PROJECT_ROOT, "backend");
+const FRONTEND_DIR = path.join(PROJECT_ROOT, "frontend");
 const BACKEND_PORT = 8000;
-const WEB_URL = "http://localhost:3000";
+const WEB_PORT = 3000;
+const WEB_URL = `http://127.0.0.1:${WEB_PORT}`;
 
 let mainWindow;
 let pythonProcess;
+let webProcess;
 let overlayWindow;
+let overlayVisible = false;
+let overlayReady = false;
+let overlayHideTimer;
+let hotkeyPollTimer;
+let claimHotkeyTimer;
+let lastHotkeySeq = 0;
+let lastLocalHotkeyAt = 0;
+let backendMissCount = 0;
+let backendRecoveryInFlight = false;
+const HOTKEY_DEBOUNCE_MS = 750;
+// Alt+Space is the Windows window menu — Electron cannot register it; backend hook handles it.
+// Override via COMPANION_HOTKEY / COMPANION_HOTKEY_FALLBACK env vars.
+const COMPANION_HOTKEY =
+  process.env.COMPANION_HOTKEY || "Alt+Space";
+const COMPANION_HOTKEY_FALLBACK =
+  process.env.COMPANION_HOTKEY_FALLBACK || "Ctrl+Alt+F";
+let registeredCompanionHotkeys = [];
+// Alt+Space is the Windows window-menu combo. Electron's globalShortcut may
+// report success but still cannot deliver it — and RegisterHotKey then fails
+// for the Python backend (error 1409). Never register it in Electron.
+const electronUnsupportedHotkeys = new Set(["Alt+Space", "alt+space"]);
 
-let OVERLAY_HTML = `<!doctype html>
-<html><head><meta charset="utf-8"><style>
-*{box-sizing:border-box}html,body{margin:0;background:transparent;overflow:hidden}body{width:238px;height:168px;padding:8px;font-family:"Segoe UI Variable","Segoe UI",sans-serif;color:#f6f5f9}.widget{width:222px;height:152px;overflow:hidden;border:1px solid #272730;border-radius:25px;background:#0a0a0d;transition:border-color .3s ease,background-color .3s ease}.widget-top{display:flex;align-items:center;justify-content:space-between;height:57px;padding:10px 13px}.mini-orb{display:grid;width:38px;height:38px;place-items:center;border-radius:50%;background:conic-gradient(from 215deg,#23104e,#7a3dff 20%,#d7bbff 35%,#5523c5 56%,transparent 73%,#29135b 88%,#23104e)}.mini-orb:after{content:"";width:30px;height:30px;border-radius:50%;background:#100b1c}.control-capsule{display:flex;align-items:center;justify-content:space-evenly;width:84px;height:34px;border:1px solid #282832;border-radius:18px;background:#050507}.bars{display:flex;align-items:center;gap:2px;height:16px}.bars i{width:2px;border-radius:4px;background:#d8d5df}.bars i:nth-child(1){height:4px}.bars i:nth-child(2){height:9px}.bars i:nth-child(3){height:13px}.bars i:nth-child(4){height:7px}.mic{width:14px;height:14px;fill:none;stroke:#d8d5df;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8}.task-panel{height:95px;padding:11px 13px;border-top:1px solid #1b1b22}.task-row{display:flex;align-items:center;gap:9px}.task-mark{display:grid;width:30px;height:30px;place-items:center;border-radius:50%;background:radial-gradient(circle at 35% 30%,#9182ff 0 7%,#5b37bf 27%,#24114d 64%,#0d0c14 100%)}.task-mark:after{content:"";width:14px;height:14px;border:1px solid #d4c6ff;border-radius:50%}.task-copy{min-width:0;flex:1}.task-label{overflow:hidden;color:#a6a3ae;font-size:9px;font-weight:700;letter-spacing:.05em;white-space:nowrap;text-overflow:ellipsis}.task-status{margin-top:2px;font-size:19px;font-weight:720;line-height:1;letter-spacing:-.035em}.task-detail{margin-top:5px;color:#9d9aa5;font-size:9px}.activity-track{position:relative;height:14px;margin-top:8px;overflow:hidden}.activity-track:before{content:"";position:absolute;top:7px;left:0;right:0;height:1px;background:#302c3d}.activity-line{position:absolute;top:1px;left:0;width:100%;height:13px;fill:none;stroke:#8157ed;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.78}body[data-state="listening"] .widget{border-color:#3a6a79;animation:widget-listen 1.96s ease-in-out infinite}body[data-state="listening"] .mini-orb{animation:ring-listen 1.96s ease-in-out infinite}body[data-state="listening"] .bars i{animation:bars .65s ease-in-out infinite alternate}body[data-state="thinking"] .widget,body[data-state="transcribing"] .widget{border-color:#49366e;animation:widget-work 2.8s ease-in-out infinite}body[data-state="thinking"] .mini-orb,body[data-state="transcribing"] .mini-orb{animation:ring-work 2.8s linear infinite}body[data-state="thinking"] .activity-line,body[data-state="transcribing"] .activity-line{animation:scan 1.2s linear infinite}body[data-state="thinking"] .bars i,body[data-state="transcribing"] .bars i{animation:bars 1.05s ease-in-out infinite alternate}body[data-state="talking"] .widget{border-color:#6a3d76;animation:widget-talk 1.3s ease-in-out infinite alternate}body[data-state="talking"] .mini-orb{animation:ring-talk 1.3s ease-in-out infinite alternate}body[data-state="talking"] .bars i{animation:bars .42s ease-in-out infinite alternate}@keyframes widget-listen{50%{transform:translateY(-1px);background:#0b0d12}}@keyframes widget-work{50%{transform:translateY(-1px);background:#0c0a11}}@keyframes widget-talk{to{transform:translateY(-1px);background:#0d0a12}}@keyframes ring-listen{50%{transform:scale(1.08) rotate(12deg)}}@keyframes ring-work{to{transform:rotate(360deg)}}@keyframes ring-talk{to{transform:scale(1.1,.92) rotate(18deg)}}@keyframes bars{to{transform:scaleY(.38)}}@keyframes scan{50%{transform:translateX(5px);opacity:1}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important}}
-</style></head><body data-state="idle"><section class="widget" aria-label="FRIDAY companion"><div class="widget-top"><div class="mini-orb" aria-hidden="true"></div><div class="control-capsule" aria-label="Voice controls"><div class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></div><svg class="mic" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.4" y="1.4" width="5.2" height="8.2" rx="2.6"></rect><path d="M3.4 7.5a4.6 4.6 0 0 0 9.2 0M8 12.1v2.2M5.6 14.3h4.8"></path></svg></div></div><div class="task-panel"><div class="task-row"><div class="task-mark"></div><div class="task-copy"><div class="task-label">FRIDAY CORE</div><div class="task-status">Ready</div><div class="task-detail">Voice interface online</div></div></div><div class="activity-track"><svg class="activity-line" viewBox="0 0 194 14" preserveAspectRatio="none"><path d="M0 10 L17 10 L27 7 L43 10 L61 9 L74 3 L86 10 L105 10 L120 6 L132 10 L149 8 L161 10 L179 4 L194 9"></path></svg></div></div></section><script>const content={idle:['Ready','Voice interface online'],listening:['Listening','Capturing your words'],thinking:['Working','Processing your task'],transcribing:['Hearing','Transcribing your request'],talking:['Responding','FRIDAY is speaking'],offline:['Offline','Local service unavailable']};let reconnectTimer;function setState(next){const state=next==='idle_listening'?'listening':next;const value=content[state]||content.idle;document.body.dataset.state=state;document.querySelector('.task-status').textContent=value[0];document.querySelector('.task-detail').textContent=value[1]}async function syncFromHealth(){try{const r=await fetch('http://127.0.0.1:8000/health',{cache:'no-store'});if(!r.ok)throw new Error('Unavailable');const d=await r.json();setState(d.state||'idle')}catch{setState('offline')}}function connect(){const ws=new WebSocket('ws://127.0.0.1:8000/ws');ws.onmessage=event=>{try{const data=JSON.parse(event.data);if(data.state)setState(data.state);if(data.type==='tts_started')setState('talking')}catch{}};ws.onopen=syncFromHealth;ws.onclose=()=>{syncFromHealth();clearTimeout(reconnectTimer);reconnectTimer=setTimeout(connect,1500)};ws.onerror=()=>ws.close()}syncFromHealth();connect();setInterval(syncFromHealth,10000);</script></body></html>`;
+const OVERLAY_WIDTH = 272;
+const OVERLAY_WIDTH_WIDE = 420;
+const OVERLAY_HEIGHT = 188;
+const OVERLAY_HEIGHT_MUSIC = 232;
+let overlayWidth = OVERLAY_WIDTH;
+const OVERLAY_HTML_PATH = path.join(__dirname, "overlay.html");
+const OVERLAY_PRELOAD_PATH = path.join(__dirname, "overlay-preload.js");
 
-OVERLAY_HTML = OVERLAY_HTML
-  .replace(
-    "</head>",
-    `<style>.control-capsule,.task-panel{cursor:pointer}.control-capsule:hover{border-color:#7a52db}.task-panel:hover{background:#0e0e14}.control-capsule:focus,.task-panel:focus{outline:1px solid #9b74f7;outline-offset:-3px}body[data-state="idle"] .mini-orb{animation:ring-idle 5.2s ease-in-out infinite}body[data-state="idle"] .activity-line{animation:trace-idle 3.6s ease-in-out infinite}body[data-state="idle"] .bars i{animation:bars 2.2s ease-in-out infinite alternate}@keyframes ring-idle{50%{transform:scale(1.045) rotate(12deg)}}@keyframes trace-idle{50%{transform:translateX(2px);opacity:1}}@media(prefers-reduced-motion:reduce){.control-capsule,.task-panel{transition:none}}</style></head>`
-  )
-  .replace(
-    "</body>",
-    `<script>const micControl=document.querySelector('.control-capsule');const taskPanel=document.querySelector('.task-panel');function activateVoice(){setState('listening');fetch('http://127.0.0.1:8000/listen-trigger',{method:'POST'}).catch(()=>setState('offline'))}function restoreFriday(){window.location.assign('friday://restore')}micControl.tabIndex=0;micControl.setAttribute('role','button');micControl.addEventListener('click',activateVoice);micControl.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activateVoice()}});taskPanel.tabIndex=0;taskPanel.setAttribute('role','button');taskPanel.addEventListener('click',restoreFriday);taskPanel.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();restoreFriday()}});</script></body>`
-  );
+function getOverlayPosition() {
+  const { screen } = require("electron");
+  const workArea = screen.getPrimaryDisplay().workArea;
+  return {
+    x: Math.round(workArea.x + (workArea.width - overlayWidth) / 2),
+    y: workArea.y + 16,
+  };
+}
+
+function positionOverlayWindow() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  const { x, y } = getOverlayPosition();
+  overlayWindow.setBounds({ x, y, width: overlayWidth, height: OVERLAY_HEIGHT });
+}
+
+function sendOverlayVisibility(visible) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  if (!overlayReady) {
+    clearTimeout(sendOverlayVisibility._retryTimer);
+    sendOverlayVisibility._retryTimer = setTimeout(
+      () => sendOverlayVisibility(visible),
+      80
+    );
+    return;
+  }
+  overlayWindow.webContents.send("companion-visibility", visible);
+}
+
+function postCompanion(path, timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port: BACKEND_PORT,
+        path,
+        method: "POST",
+        headers: { "Content-Length": "0" },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.on("error", () => resolve(false));
+    req.end();
+  });
+}
+
+function postCompanionJson(path, timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port: BACKEND_PORT,
+        path,
+        method: "POST",
+        headers: { "Content-Length": "0" },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => {
+          data += chunk;
+        });
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(data || "{}"));
+          } catch {
+            resolve({ status: res.statusCode === 200 ? "ok" : "error" });
+          }
+        });
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(null);
+    });
+    req.on("error", () => resolve(null));
+    req.end();
+  });
+}
+
+async function stopVoiceAndTts() {
+  await postCompanion("/stop-trigger", 8000);
+}
+
+async function activateCompanionMode() {
+  await postCompanion("/companion/activate");
+}
+
+async function deactivateCompanionMode() {
+  await postCompanion("/companion/deactivate");
+}
+
+function hideCompanionOverlay() {
+  // Companion stays available as the primary surface; only hide on explicit quit.
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  overlayVisible = false;
+  sendOverlayVisibility(false);
+  clearTimeout(overlayHideTimer);
+  overlayHideTimer = setTimeout(() => {
+    if (overlayWindow && !overlayWindow.isDestroyed() && !overlayVisible) {
+      overlayWindow.hide();
+    }
+  }, 340);
+}
+
+function showCompanionOverlay() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  overlayVisible = true;
+  clearTimeout(overlayHideTimer);
+  positionOverlayWindow();
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWindow.setAlwaysOnTop(true, "screen-saver", 1);
+  if (!overlayWindow.isVisible()) {
+    overlayWindow.show();
+  } else {
+    overlayWindow.moveTop();
+  }
+  sendOverlayVisibility(true);
+  activateCompanionMode();
+}
+
+function fetchHotkeySignal() {
+  return new Promise((resolve) => {
+    const req = http.get(
+      {
+        hostname: "127.0.0.1",
+        port: BACKEND_PORT,
+        path: "/companion/hotkey-signal",
+        timeout: 3000,
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => {
+          data += chunk;
+        });
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch {
+            resolve(null);
+          }
+        });
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(null);
+    });
+    req.on("error", () => resolve(null));
+    req.end();
+  });
+}
+
+async function dismissCompanionFromHotkey(source = "hotkey") {
+  hideCompanionOverlay();
+  await stopVoiceAndTts();
+  await postCompanion("/agent/stop", 3000);
+  await deactivateCompanionMode();
+  await postCompanion("/companion/dismiss", 8000);
+  logToFile(`Companion closed via ${source} (background work terminated)`);
+}
+
+function applyCompanionHotkeyAction(action, source = "hotkey") {
+  if (action === "close") {
+    // Backend already ran full dismiss for Alt+Space / keyboard hook.
+    if (source === "backend-hotkey") {
+      hideCompanionOverlay();
+      logToFile(`Companion closed via ${source}`);
+      return;
+    }
+    dismissCompanionFromHotkey(source);
+    return;
+  }
+  showCompanionOverlay();
+  logToFile(`Companion opened via ${source}`);
+}
+
+async function triggerCompanionHotkey(source = "electron") {
+  const now = Date.now();
+  if (now - lastLocalHotkeyAt < HOTKEY_DEBOUNCE_MS) return;
+  lastLocalHotkeyAt = now;
+  // Fallback toggle when backend keyboard hook is unavailable.
+  const result = await postCompanionJson("/companion/f12");
+  if (result && typeof result.seq === "number") {
+    lastHotkeySeq = result.seq;
+  }
+  const action = result && result.action ? result.action : "open";
+  applyCompanionHotkeyAction(action, source);
+}
+
+async function ensureBackendRunning() {
+  if (backendRecoveryInFlight) return false;
+  const healthy = await checkBackendHealth();
+  if (healthy) {
+    backendMissCount = 0;
+    return true;
+  }
+
+  backendRecoveryInFlight = true;
+  try {
+    logToFile("Backend offline — restarting for companion hotkey (Alt+Space)");
+    await startBackend();
+    const ok = await checkBackendHealth();
+    if (ok) {
+      logToFile("Backend recovered — Alt+Space hook should be active again");
+    } else {
+      logToFile("Backend recovery failed — try Ctrl+Alt+F or restart FRIDAY", true);
+    }
+    return ok;
+  } catch (err) {
+    logToFile(`Backend recovery error: ${err.message}`, true);
+    return false;
+  } finally {
+    backendRecoveryInFlight = false;
+  }
+}
+
+async function syncCompanionFromBackend() {
+  const signal = await fetchHotkeySignal();
+  if (!signal || typeof signal.seq !== "number") return;
+  lastHotkeySeq = signal.seq;
+  if (signal.action === "open" && signal.companion_mode) {
+    showCompanionOverlay();
+    logToFile("Companion synced open from backend on startup");
+  } else if (signal.action === "close") {
+    hideCompanionOverlay();
+  }
+}
+
+function startHotkeyPoll() {
+  clearInterval(hotkeyPollTimer);
+  hotkeyPollTimer = setInterval(async () => {
+    const signal = await fetchHotkeySignal();
+    if (!signal || typeof signal.seq !== "number") {
+      backendMissCount += 1;
+      if (backendMissCount >= 3) {
+        await ensureBackendRunning();
+      }
+      return;
+    }
+    backendMissCount = 0;
+    if (signal.seq > lastHotkeySeq) {
+      lastHotkeySeq = signal.seq;
+      applyCompanionHotkeyAction(signal.action, "backend-hotkey");
+    }
+  }, 400);
+}
+
+function companionHotkeyCombos() {
+  const combos = [COMPANION_HOTKEY];
+  if (
+    COMPANION_HOTKEY_FALLBACK &&
+    COMPANION_HOTKEY_FALLBACK !== COMPANION_HOTKEY
+  ) {
+    combos.push(COMPANION_HOTKEY_FALLBACK);
+  }
+  return combos;
+}
+
+function isElectronBlockedHotkey(combo) {
+  return combo.replace(/\s+/g, "").toLowerCase() === "alt+space";
+}
+
+function registerCompanionHotkey() {
+  try {
+    globalShortcut.unregister("Alt+Space");
+  } catch {
+    // Release stale Electron registration so the backend can claim Alt+Space.
+  }
+  const combos = companionHotkeyCombos();
+  for (const combo of registeredCompanionHotkeys) {
+    if (!combos.includes(combo)) {
+      try {
+        globalShortcut.unregister(combo);
+      } catch {
+        // Ignore unregister failures during rebind
+      }
+    }
+  }
+
+  const active = [];
+  for (const combo of combos) {
+    if (isElectronBlockedHotkey(combo) || electronUnsupportedHotkeys.has(combo)) {
+      logToFile(
+        `${combo} handled by Python backend hook (not Electron globalShortcut)`
+      );
+      continue;
+    }
+    try {
+      globalShortcut.unregister(combo);
+      const registered = globalShortcut.register(combo, () => {
+        triggerCompanionHotkey(combo);
+      });
+      if (registered) {
+        active.push(combo);
+        logToFile(`${combo} mapped to FRIDAY companion (Electron)`);
+      } else {
+        electronUnsupportedHotkeys.add(combo);
+        logToFile(
+          `${combo} unavailable in Electron — backend keyboard hook handles it if running`
+        );
+      }
+    } catch (err) {
+      electronUnsupportedHotkeys.add(combo);
+      logToFile(`${combo} globalShortcut error: ${err}`, true);
+    }
+  }
+  registeredCompanionHotkeys = active;
+}
+
+function claimCompanionHotkeys() {
+  registerCompanionHotkey();
+  if (claimHotkeyTimer) clearInterval(claimHotkeyTimer);
+  claimHotkeyTimer = setInterval(() => {
+    const combos = companionHotkeyCombos();
+    const missing = combos.some(
+      (combo) =>
+        !electronUnsupportedHotkeys.has(combo) &&
+        !globalShortcut.isRegistered(combo)
+    );
+    if (missing) registerCompanionHotkey();
+  }, 5000);
+}
+
+function unregisterCompanionHotkey() {
+  clearInterval(hotkeyPollTimer);
+  if (claimHotkeyTimer) {
+    clearInterval(claimHotkeyTimer);
+    claimHotkeyTimer = null;
+  }
+  try {
+    for (const combo of registeredCompanionHotkeys) {
+      globalShortcut.unregister(combo);
+    }
+    registeredCompanionHotkeys = [];
+    globalShortcut.unregisterAll();
+  } catch {
+    // Ignore unregister failures during shutdown
+  }
+}
 
 function logToFile(msg, isError = false) {
   try {
@@ -40,6 +405,34 @@ function logToFile(msg, isError = false) {
   } catch {
     // Ignore logging failures
   }
+}
+
+function killStaleBackendOnPort(port) {
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") {
+      resolve(false);
+      return;
+    }
+    exec(`netstat -ano | findstr :${port}`, (err, stdout) => {
+      if (err || !stdout) {
+        resolve(false);
+        return;
+      }
+      const pids = new Set();
+      for (const line of stdout.split(/\r?\n/)) {
+        if (!line.includes("LISTENING")) continue;
+        const parts = line.trim().split(/\s+/);
+        const pid = Number.parseInt(parts[parts.length - 1], 10);
+        if (Number.isFinite(pid) && pid > 0) pids.add(pid);
+      }
+      if (!pids.size) {
+        resolve(false);
+        return;
+      }
+      const cmd = [...pids].map((pid) => `taskkill /PID ${pid} /F`).join(" & ");
+      exec(cmd, () => resolve(true));
+    });
+  });
 }
 
 function isPortInUse(port) {
@@ -59,7 +452,22 @@ function isPortInUse(port) {
 function checkBackendHealth() {
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${BACKEND_PORT}/health`, (res) => {
-      resolve(res.statusCode === 200);
+      let body = "";
+      res.on("data", (chunk) => {
+        body += chunk;
+      });
+      res.on("end", () => {
+        if (res.statusCode !== 200) {
+          resolve(false);
+          return;
+        }
+        try {
+          const data = JSON.parse(body || "{}");
+          resolve(data.ready !== false);
+        } catch {
+          resolve(true);
+        }
+      });
     });
     req.on("error", () => resolve(false));
     req.setTimeout(5000, () => {
@@ -88,6 +496,115 @@ function waitForBackend(maxMs = 180000) {
   });
 }
 
+function checkWebHealth() {
+  return new Promise((resolve) => {
+    const req = http.get(WEB_URL, (res) => {
+      res.resume();
+      resolve(res.statusCode >= 200 && res.statusCode < 500);
+    });
+    req.on("error", () => resolve(false));
+    req.setTimeout(5000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function waitForFrontend(maxMs = 120000) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const poll = setInterval(async () => {
+      const healthy = await checkWebHealth();
+      if (healthy) {
+        clearInterval(poll);
+        resolve(true);
+        return;
+      }
+      if (Date.now() - started >= maxMs) {
+        clearInterval(poll);
+        resolve(false);
+      }
+    }, 1000);
+  });
+}
+
+function killWebProcessTree() {
+  return new Promise((resolve) => {
+    if (!webProcess || webProcess.killed) {
+      resolve(false);
+      return;
+    }
+    const pid = webProcess.pid;
+    webProcess = null;
+    if (process.platform === "win32") {
+      exec(`taskkill /PID ${pid} /T /F`, () => resolve(true));
+      return;
+    }
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      /* ignore */
+    }
+    resolve(true);
+  });
+}
+
+function startFrontend() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (await checkWebHealth()) {
+        logToFile(`Frontend already reachable at ${WEB_URL}`);
+        resolve();
+        return;
+      }
+
+      const buildIdPath = path.join(FRONTEND_DIR, ".next", "BUILD_ID");
+      const useProduction =
+        process.env.FRIDAY_WEB_MODE === "production" &&
+        fs.existsSync(buildIdPath);
+      const script = useProduction ? "start" : "dev:web";
+
+      logToFile(`Starting frontend: npm run ${script}`);
+      webProcess = spawn("npm", ["run", script], {
+        cwd: FRONTEND_DIR,
+        shell: true,
+        env: {
+          ...process.env,
+          PORT: String(WEB_PORT),
+        },
+      });
+
+      webProcess.stdout.on("data", (data) => {
+        logToFile(`[Web] ${data}`);
+      });
+
+      webProcess.stderr.on("data", (data) => {
+        logToFile(`[Web ERROR] ${data}`, true);
+      });
+
+      webProcess.on("exit", (code) => {
+        if (code !== 0 && code !== null) {
+          logToFile(`Frontend process exited with code ${code}`, true);
+        }
+      });
+
+      const healthy = await waitForFrontend(120000);
+      if (healthy) {
+        logToFile(`Frontend ready on port ${WEB_PORT}`);
+        resolve();
+        return;
+      }
+      reject(
+        new Error(
+          `Frontend did not become reachable at ${WEB_URL} within 120 seconds.`
+        )
+      );
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 function startBackend() {
   return new Promise(async (resolve, reject) => {
     try {
@@ -100,13 +617,18 @@ function startBackend() {
           return;
         }
         logToFile(
-          `Port ${BACKEND_PORT} in use but unhealthy. Run: npm run stop:desktop`
+          `Port ${BACKEND_PORT} in use but unhealthy — clearing stale listener`
         );
-        return reject(
-          new Error(
-            `Port ${BACKEND_PORT} is occupied by a stale process.\n\nRun: npm run stop:desktop\nThen restart FRIDAY.`
-          )
-        );
+        try {
+          if (pythonProcess && !pythonProcess.killed) {
+            pythonProcess.kill("SIGINT");
+          }
+        } catch {
+          // Ignore stale child cleanup failures
+        }
+        pythonProcess = null;
+        await killStaleBackendOnPort(BACKEND_PORT);
+        await new Promise((r) => setTimeout(r, 1500));
       }
 
       const pythonPath = path.join(BACKEND_DIR, ".venv", "Scripts", "python.exe");
@@ -167,8 +689,9 @@ function startBackend() {
 async function createWindow() {
   try {
     await startBackend();
+    await startFrontend();
   } catch (err) {
-    dialog.showErrorBox("FRIDAY Backend Startup Failure", err.message);
+    dialog.showErrorBox("FRIDAY Startup Failure", err.message);
     app.quit();
     return;
   }
@@ -189,6 +712,7 @@ async function createWindow() {
       contextIsolation: true,
       sandbox: true,
       webSecurity: false,
+      backgroundThrottling: false,
     },
   });
 
@@ -214,70 +738,241 @@ async function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
+    if (process.env.FRIDAY_OPEN_MAIN === "1") {
+      mainWindow.show();
+      mainWindow.focus();
+      return;
+    }
+    // Main app stays hidden until the user opens it from the companion gear button.
   });
 
-  mainWindow.on("minimize", () => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.showInactive();
-  });
-
-  mainWindow.on("restore", () => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
+  mainWindow.on("close", async (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      await stopVoiceAndTts();
+      mainWindow.hide();
+      showCompanionOverlay();
+    }
   });
 
   mainWindow.on("closed", () => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close();
     mainWindow = null;
   });
 }
 
+async function openMainApp() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    await startFrontend();
+    const currentUrl = mainWindow.webContents.getURL();
+    const needsReload =
+      !currentUrl.startsWith(WEB_URL) || currentUrl.startsWith("data:");
+    if (needsReload) {
+      await mainWindow.loadURL(WEB_URL);
+      await waitForFrontend(30000);
+    }
+  } catch (err) {
+    logToFile(`openMainApp failed: ${err.message}`, true);
+    dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      title: "FRIDAY Frontend",
+      message: "The main app UI is still starting.",
+      detail: `${err.message}\n\nThe window will open once http://127.0.0.1:3000 is ready.`,
+    });
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 function createOverlayWindow() {
   const { screen } = require("electron");
-  const workArea = screen.getPrimaryDisplay().workArea;
+  const { x, y } = getOverlayPosition();
   overlayWindow = new BrowserWindow({
-    width: 238,
-    height: 168,
-    x: Math.round(workArea.x + (workArea.width - 238) / 2),
-    y: workArea.y + 16,
+    width: overlayWidth,
+    height: OVERLAY_HEIGHT,
+    x,
+    y,
     transparent: true,
+    backgroundColor: "#00000000",
     frame: false,
     resizable: false,
     movable: false,
-    focusable: true,
+    focusable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: false,
+    thickFrame: false,
+    roundedCorners: false,
     show: false,
-    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+    webPreferences: {
+      preload: OVERLAY_PRELOAD_PATH,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
   });
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.webContents.on("will-navigate", (event, url) => {
-    if (url !== "friday://restore") return;
+    if (url !== "friday://open-app") return;
     event.preventDefault();
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-    overlayWindow.hide();
+    openMainApp();
   });
-  overlayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(OVERLAY_HTML)}`);
+  overlayWindow.webContents.on("did-finish-load", () => {
+    overlayReady = true;
+    if (overlayVisible) sendOverlayVisibility(true);
+  });
+  overlayWindow.loadFile(OVERLAY_HTML_PATH);
+
+  screen.on("display-metrics-changed", () => {
+    if (overlayVisible) positionOverlayWindow();
+  });
 }
+
+ipcMain.on("overlay-ready", () => {
+  overlayReady = true;
+  if (overlayVisible) sendOverlayVisibility(true);
+});
+
+ipcMain.on("open-main-app", () => {
+  openMainApp();
+});
+
+function killPythonProcessTree() {
+  return new Promise((resolve) => {
+    if (!pythonProcess || pythonProcess.killed) {
+      resolve(false);
+      return;
+    }
+    const pid = pythonProcess.pid;
+    pythonProcess = null;
+    if (process.platform === "win32") {
+      exec(`taskkill /PID ${pid} /T /F`, () => resolve(true));
+      return;
+    }
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      /* ignore */
+    }
+    resolve(true);
+  });
+}
+
+async function shutdownFridayApp() {
+  if (app.isQuitting) return;
+  app.isQuitting = true;
+  logToFile("Full FRIDAY shutdown — companion voice mode end");
+
+  unregisterCompanionHotkey();
+  clearInterval(hotkeyPollTimer);
+  if (claimHotkeyTimer) {
+    clearInterval(claimHotkeyTimer);
+    claimHotkeyTimer = null;
+  }
+
+  overlayVisible = false;
+  sendOverlayVisibility(false);
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.hide();
+  }
+
+  try {
+    await stopVoiceAndTts();
+    await postCompanion("/agent/stop", 3000);
+    await postCompanion("/app/shutdown", 8000);
+  } catch (err) {
+    logToFile(`Shutdown backend cleanup: ${err}`, true);
+  }
+
+  await killPythonProcessTree();
+  await killWebProcessTree();
+  await killStaleBackendOnPort(BACKEND_PORT);
+  await killStaleBackendOnPort(WEB_PORT);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.destroy();
+    mainWindow = null;
+  }
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.destroy();
+    overlayWindow = null;
+  }
+
+  app.exit(0);
+}
+
+ipcMain.on("shutdown-friday", () => {
+  shutdownFridayApp().catch((err) => {
+    logToFile(`Shutdown failed: ${err}`, true);
+    app.exit(1);
+  });
+});
+
+ipcMain.on("overlay-resize", (_event, payload) => {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  const next =
+    typeof payload === "object" && payload !== null
+      ? payload
+      : { height: payload };
+  const nextHeight = Math.max(
+    OVERLAY_HEIGHT,
+    Math.min(280, Number(next.height) || OVERLAY_HEIGHT)
+  );
+  if (next.width) {
+    overlayWidth = Math.max(
+      OVERLAY_WIDTH,
+      Math.min(OVERLAY_WIDTH_WIDE, Number(next.width) || OVERLAY_WIDTH)
+    );
+  }
+  const { x, y } = getOverlayPosition();
+  overlayWindow.setBounds({ x, y, width: overlayWidth, height: nextHeight });
+});
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    showCompanionOverlay();
   });
 }
 
 app.whenReady().then(async () => {
+  const openMainOnStart = process.env.FRIDAY_OPEN_MAIN === "1";
   createOverlayWindow();
   await createWindow();
+  claimCompanionHotkeys();
+  if (openMainOnStart) {
+    hideCompanionOverlay();
+    await deactivateCompanionMode();
+    await openMainApp();
+    logToFile("FRIDAY main app opened (companion disabled on startup)");
+  } else {
+    await syncCompanionFromBackend();
+  }
+  startHotkeyPoll();
+  const hotkeyHint =
+    registeredCompanionHotkeys.length > 0
+      ? registeredCompanionHotkeys.join(" or ")
+      : COMPANION_HOTKEY;
+  logToFile(
+    `FRIDAY ready — press ${hotkeyHint} to open companion (backend hook for ${COMPANION_HOTKEY})`
+  );
+});
+
+app.on("before-quit", async (event) => {
+  if (app.isQuitting) return;
+  event.preventDefault();
+  app.isQuitting = true;
+  unregisterCompanionHotkey();
+  await stopVoiceAndTts();
+  await postCompanion("/app/shutdown", 3000);
+  await killPythonProcessTree();
+  await killWebProcessTree();
+  await killStaleBackendOnPort(BACKEND_PORT);
+  await killStaleBackendOnPort(WEB_PORT);
+  app.exit(0);
 });
 
 app.on("window-all-closed", () => {

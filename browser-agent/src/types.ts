@@ -1,4 +1,5 @@
 export type BrowserMode = "headed" | "headless";
+export type ObservationStatus = "success" | "partial" | "needs_user_input";
 
 export interface InteractiveElement {
   role: string;
@@ -23,6 +24,18 @@ export interface PageState {
   tabCount: number;
 }
 
+export interface BrowserObservation {
+  status: ObservationStatus;
+  current_url: string;
+  last_actions: string[];
+  extracted_data: Record<string, unknown>;
+  screenshot_path?: string;
+  screenshot_base64?: string;
+  voice_message: string;
+  next_options: string[];
+  state: PageState;
+}
+
 export interface ActionRequest {
   action: string;
   selector?: string;
@@ -35,10 +48,13 @@ export interface ActionRequest {
   engine?: string;
   query?: string;
   mediaAction?: string;
+  allowNewTab?: boolean;
+  volume?: number;
 }
 
 export interface ActionResult {
   success: boolean;
   message: string;
   state?: PageState;
+  observation?: BrowserObservation;
 }

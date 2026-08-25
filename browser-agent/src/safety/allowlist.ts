@@ -9,6 +9,10 @@ const DEFAULT_ALLOWED_HOSTS = [
   "www.youtube.com",
   "music.youtube.com",
   "news.google.com",
+  "chatgpt.com",
+  "www.chatgpt.com",
+  "openai.com",
+  "www.openai.com",
 ];
 
 export function isUrlAllowed(url: string, extraHosts: string[] = []): boolean {
