@@ -10,28 +10,35 @@ interface QuickActionsProps {
 export default function QuickActions({ onSendMessage, onClearChat }: QuickActionsProps) {
   const actions = [
     {
-      label: "Summarize Workspace",
+      label: "Introduce Yourself",
       icon: MessageSquareDashed,
-      action: () => onSendMessage("Summarize the current workspace and active tasks."),
+      action: () => onSendMessage("Hello Friday, introduce yourself in one short sentence."),
       color: "text-blue-500 dark:text-blue-400",
       bg: "bg-blue-50 dark:bg-blue-950/40",
     },
     {
-      label: "Check Dependencies",
+      label: "What Time Is It?",
       icon: Cpu,
-      action: () => onSendMessage("Check the project for missing or outdated dependencies."),
+      action: () => onSendMessage("What time is it right now?"),
       color: "text-emerald-500 dark:text-emerald-400",
       bg: "bg-emerald-50 dark:bg-emerald-950/40",
     },
     {
-      label: "Run Diagnostics",
+      label: "Open TextEdit",
+      icon: Zap,
+      action: () => onSendMessage("Open TextEdit."),
+      color: "text-violet-500 dark:text-violet-400",
+      bg: "bg-violet-50 dark:bg-violet-950/40",
+    },
+    {
+      label: "Tell a Joke",
       icon: ShieldAlert,
-      action: () => onSendMessage("Run a full system and backend diagnostic check."),
+      action: () => onSendMessage("Tell me a short witty joke."),
       color: "text-amber-500 dark:text-amber-400",
       bg: "bg-amber-50 dark:bg-amber-950/40",
     },
     {
-      label: "Clear Memory",
+      label: "Clear Chat",
       icon: Trash2,
       action: onClearChat,
       color: "text-rose-500 dark:text-rose-400",
@@ -40,7 +47,7 @@ export default function QuickActions({ onSendMessage, onClearChat }: QuickAction
   ];
 
   return (
-    <div className="bg-white/40 dark:bg-zinc-900/40 border-b border-border/20 px-6 py-4 backdrop-blur-sm shrink-0">
+    <div className="bg-white/40 dark:bg-zinc-900/40 border-b border-border/20 px-6 py-4 backdrop-blur-sm flex-shrink-0">
       <div className="flex items-center gap-2 mb-3">
         <Zap className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase mt-0.5">
@@ -55,7 +62,7 @@ export default function QuickActions({ onSendMessage, onClearChat }: QuickAction
             <button
               key={idx}
               onClick={act.action}
-              className="group shrink-0 flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/50 dark:bg-zinc-800/50 border border-white/80 dark:border-zinc-700/80 shadow-sm hover:bg-white dark:hover:bg-zinc-800 hover:shadow-md transition-all active:scale-95 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="group flex-shrink-0 flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/50 dark:bg-zinc-800/50 border border-white/80 dark:border-zinc-700/80 shadow-sm hover:bg-white dark:hover:bg-zinc-800 hover:shadow-md transition-all active:scale-95 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               <div className={`p-1 rounded-md ${act.bg} transition-colors group-hover:bg-opacity-80`}>
                 <Icon className={`w-3.5 h-3.5 ${act.color}`} />

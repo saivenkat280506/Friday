@@ -1,11 +1,19 @@
 "use client"
 
-import { useEffect, useMemo, useRef } from "react"
+import { Suspense, useEffect, useMemo, useRef } from "react"
 import { useTexture } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
 
-export type AgentState = "idle" | "thinking" | "listening" | "talking" | "transcribing" | null
+export type AgentState =
+  | "idle"
+  | "idle_listening"
+  | "thinking"
+  | "listening"
+  | "talking"
+  | "transcribing"
+  | "offline"
+  | null
 
 type OrbProps = {
   colors?: [string, string]
@@ -48,19 +56,21 @@ export function Orb({
           premultipliedAlpha: true,
         }}
       >
-        <Scene
-          colors={colors}
-          colorsRef={colorsRef}
-          seed={seed}
-          agentState={agentState}
-          volumeMode={volumeMode}
-          manualInput={manualInput}
-          manualOutput={manualOutput}
-          inputVolumeRef={inputVolumeRef}
-          outputVolumeRef={outputVolumeRef}
-          getInputVolume={getInputVolume}
-          getOutputVolume={getOutputVolume}
-        />
+        <Suspense fallback={null}>
+          <Scene
+            colors={colors}
+            colorsRef={colorsRef}
+            seed={seed}
+            agentState={agentState}
+            volumeMode={volumeMode}
+            manualInput={manualInput}
+            manualOutput={manualOutput}
+            inputVolumeRef={inputVolumeRef}
+            outputVolumeRef={outputVolumeRef}
+            getInputVolume={getInputVolume}
+            getOutputVolume={getOutputVolume}
+          />
+        </Suspense>
       </Canvas>
     </div>
   )
@@ -98,9 +108,7 @@ function Scene({
   const targetColor1Ref = useRef(new THREE.Color(colors[0]))
   const targetColor2Ref = useRef(new THREE.Color(colors[1]))
   const animSpeedRef = useRef(0.1)
-  const perlinNoiseTexture = useTexture(
-    "https://storage.googleapis.com/eleven-public-cdn/images/perlin-noise.png"
-  )
+  const perlinNoiseTexture = useTexture("/perlin-noise.png")
 
   const agentRef = useRef<AgentState>(agentState)
   const modeRef = useRef<"auto" | "manual">(volumeMode)
@@ -187,9 +195,15 @@ function Scene({
       )
     } else {
       const t = u.uTime.value * 2
-      if (agentRef.current === null || agentRef.current === "idle") {
+      if (agentRef.current === "offline") {
+        targetIn = 0
+        targetOut = 0.08
+      } else if (agentRef.current === null || agentRef.current === "idle") {
         targetIn = 0
         targetOut = 0.3
+      } else if (agentRef.current === "idle_listening") {
+        targetIn = clamp01(0.25 + Math.sin(t * 2.4) * 0.15)
+        targetOut = 0.35
       } else if (agentRef.current === "listening") {
         targetIn = clamp01(0.55 + Math.sin(t * 3.2) * 0.35)
         targetOut = 0.45

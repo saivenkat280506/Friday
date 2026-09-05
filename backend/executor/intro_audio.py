@@ -49,6 +49,13 @@ def stop_friday_intro() -> None:
 
 def play_friday_intro() -> tuple[bool, str]:
     """Play the FRIDAY introduction audio and block until playback finishes."""
+    import sys
+
+    # Pocket TTS already owns CoreAudio. pygame/SDL reports success with
+    # zero output on macOS, so skip the clip and let cloned-voice TTS speak.
+    if sys.platform == "darwin":
+        return False, "Use cloned-voice TTS on macOS."
+
     track = resolve_friday_intro_track()
     if not track:
         return False, "I couldn't find my introduction audio, Boss."
@@ -67,7 +74,18 @@ def play_friday_intro() -> tuple[bool, str]:
     except Exception as exc:
         print(f"[IntroAudio] pygame playback failed ({exc}), falling back to system player")
         try:
-            os.startfile(str(track))
+            if os.name == "nt":
+                os.startfile(str(track))
+                return True, "Playing my introduction, Boss."
+            import subprocess
+            import sys
+
+            if sys.platform == "darwin":
+                completed = subprocess.run(["afplay", str(track)], check=False)
+                if completed.returncode == 0:
+                    return True, "Playing my introduction, Boss."
+                return False, "I found my introduction clip, but could not play it."
+            subprocess.run(["ffplay", "-nodisp", "-autoexit", str(track)], check=False)
             return True, "Playing my introduction, Boss."
         except OSError as start_exc:
             return False, f"I found my introduction clip, but could not play it: {start_exc}"

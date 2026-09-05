@@ -23,8 +23,12 @@ async def run_background_monitor():
             mem = psutil.virtual_memory()
             ram_percent = mem.percent
             
-            # 3. Check Disk Space (Windows-safe path)
-            system_drive = os.environ.get("SystemDrive", "C:") + os.sep
+            # 3. Check Disk Space (cross-platform path)
+            import platform
+            if platform.system() == "Windows":
+                system_drive = os.environ.get("SystemDrive", "C:") + os.sep
+            else:
+                system_drive = "/"
             disk = psutil.disk_usage(system_drive)
             disk_percent = disk.percent
             disk_free_gb = disk.free / (1024 ** 3)

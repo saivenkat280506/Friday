@@ -1,0 +1,11 @@
+{
+  "name": "friday",
+  "version": "1.0.0",
+  "description": "F.R.I.D.A.Y. Personal AI Assistant",
+  "main": "frontend/desktop/main.js",
+  "scripts": {
+    "start": "bash scripts/friday-launcher.sh",
+    "companion": "FRIDAY_SHOW_COMPANION=1 frontend/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron frontend/desktop",
+    "desktop": "frontend/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron frontend/desktop"
+  }
+}

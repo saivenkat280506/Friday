@@ -8,13 +8,7 @@ import {
   useState,
   type RefObject,
 } from "react"
-
-/** Provider-neutral character timing data for the transcript renderer. */
-export type CharacterAlignmentResponseModel = {
-  characters: string[]
-  characterStartTimesSeconds: number[]
-  characterEndTimesSeconds: number[]
-}
+import type { CharacterAlignmentResponseModel } from "@elevenlabs/elevenlabs-js/api/types/CharacterAlignmentResponseModel"
 
 type ComposeSegmentsOptions = {
   hideAudioTags?: boolean
@@ -511,4 +505,5 @@ export type {
   SegmentComposer,
   TranscriptSegment,
   TranscriptWord,
+  CharacterAlignmentResponseModel,
 }

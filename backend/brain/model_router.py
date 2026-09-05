@@ -1,8 +1,11 @@
 """
-model_router.py — Hybrid Groq model selection for FRIDAY.
+model_router.py — Hybrid model selection for FRIDAY.
 
-Fast path (llama-3.1-8b-instant): jokes, time, open app, local music, volume, chat.
-Heavy path (llama-3.3-70b-versatile): headlines, web search, browser work, planning.
+Cloud Groq:
+  Fast path (openai/gpt-oss-20b): jokes, time, open app, local music, volume, chat.
+  Heavy path (openai/gpt-oss-120b): headlines, web search, browser work, planning.
+
+Local Ollama: both paths use the installed Qwen3.5 4B model.
 """
 
 from __future__ import annotations
@@ -11,8 +14,23 @@ from typing import Any
 
 from brain.state import IntentCategory
 
-FAST_MODEL = "llama-3.1-8b-instant"
-HEAVY_MODEL = "llama-3.3-70b-versatile"
+
+def _load_models() -> tuple[str, str]:
+    try:
+        from config import settings, use_ollama
+
+        if use_ollama():
+            name = (settings.OLLAMA_MODEL or settings.LLM_MODEL or "qwen3.5:4b").strip()
+            return name, name
+        return (
+            (settings.LLM_MODEL or "openai/gpt-oss-20b").strip(),
+            (settings.LLM_MODEL_HEAVY or "openai/gpt-oss-120b").strip(),
+        )
+    except Exception:
+        return "openai/gpt-oss-20b", "openai/gpt-oss-120b"
+
+
+FAST_MODEL, HEAVY_MODEL = _load_models()
 
 _HEAVY_INTENTS = frozenset({
     IntentCategory.NEWS,
@@ -46,7 +64,7 @@ def resolve_llm_model(
     for_plan: bool = False,
     for_classify: bool = False,
 ) -> str:
-    """Pick Groq model for this turn."""
+    """Pick the LLM model for this turn."""
     if for_plan:
         return HEAVY_MODEL
 

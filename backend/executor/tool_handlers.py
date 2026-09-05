@@ -96,15 +96,66 @@ class AsyncToolHandlers:
         return await self._ctrl.keyboard_press(key)
 
     async def screen_capture(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
-        ts = int(asyncio.get_event_loop().time())
-        path = os.path.join(os.path.expanduser("~"), "Pictures", f"friday_shot_{ts}.png")
-        return await self._ctrl.take_screenshot(save_path=path)
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y-%m-%d_at_%I.%M.%S_%p")
+        desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop")
+        path = os.path.join(desktop_dir, f"Screenshot_{ts}.png")
+        res = await self._ctrl.take_screenshot(save_path=path)
+        if res.get("status") == "success":
+            return {
+                "status": "success",
+                "result": path,
+                "saved_path": path,
+                "message": f"Captured screenshot and saved it to your Desktop.",
+            }
+        return res
 
     async def screen_read(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
-        text = await self._ctrl.capture_screen_text()
-        if text:
-            return {"status": "success", "result": text, "message": "Screen read complete"}
-        return {"status": "failed", "error": "No text found or OCR unavailable"}
+        # 1. Desktop perception snapshot
+        from perception.world import get_world_snapshot
+        snap = get_world_snapshot()
+        app_name = snap.app_display or snap.app or "your desktop"
+        window_title = snap.window_title or ""
+
+        # 2. UI elements from accessibility driver
+        ui_elements_desc = ""
+        try:
+            from executor.mac_ax import get_ui_elements
+            elements = get_ui_elements()
+            if elements:
+                names = [e.title for e in elements if e.title and len(e.title) < 30]
+                if names:
+                    ui_elements_desc = f" with buttons: {', '.join(names[:5])}"
+        except Exception:
+            pass
+
+        # 3. Optional OCR text if available
+        ocr_text = await self._ctrl.capture_screen_text()
+        if ocr_text:
+            lines = [line.strip() for line in ocr_text.splitlines() if line.strip()]
+            substantive = [l for l in lines if len(l) > 20 and not l.startswith("http")]
+            readable = " ".join(substantive[:6]) if substantive else " ".join(lines[:6])
+            if len(readable) > 280:
+                readable = readable[:277] + "..."
+            msg = f"On your screen: {readable}"
+            return {
+                "status": "success",
+                "result": ocr_text,
+                "message": msg,
+                "app": app_name,
+                "window_title": window_title,
+                "content": readable,
+            }
+
+        # 4. Perception description
+        if window_title:
+            msg = f"You are currently in {app_name}, viewing '{window_title}'{ui_elements_desc}."
+        elif app_name:
+            msg = f"You have {app_name} open on your screen{ui_elements_desc}."
+        else:
+            msg = "I can see your desktop workspace."
+
+        return {"status": "success", "result": msg, "message": msg}
 
     async def find_on_screen(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
         target = raw or params.get("target", "")
@@ -163,14 +214,22 @@ class AsyncToolHandlers:
         return {"status": "success", "message": f"Closed {count} unnecessary browser tab(s)."}
 
     async def open_youtube(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
-        query = raw or params.get("query", "")
+        query = (raw or params.get("query") or "").strip()
+        if re.fullmatch(r"(?:you\s*tube|youtube)[.!?,;:]*", query, re.I):
+            query = ""
         url = (
             f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}"
             if query
             else "https://www.youtube.com"
         )
-        await asyncio.to_thread(webbrowser.open, url)
-        return {"status": "success", "message": f"YouTube: {query or 'home'}"}
+        try:
+            from executor.automation import open_url_in_chrome
+            opened = await asyncio.to_thread(open_url_in_chrome, url)
+        except Exception:
+            opened = False
+        if not opened:
+            await asyncio.to_thread(webbrowser.open, url)
+        return {"status": "success", "message": "Opened YouTube." if not query else f"Opened YouTube for {query}."}
 
     async def send_whatsapp_message(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
         from executor.whatsapp_handler import send_whatsapp_message as wa_send
@@ -203,12 +262,41 @@ class AsyncToolHandlers:
 
         result = await wa_send(contact, message, enhanced_params=enhanced)
         if result["success"]:
+            contact_name = result.get("contact", contact)
+            if result.get("stage") == "draft_ready":
+                msg = f"I've typed the message to {contact_name}. Shall I send it now, Boss?"
+            elif not message:
+                msg = f"Opened chat with {contact_name} on WhatsApp."
+            else:
+                msg = f"Message sent to {contact_name} on WhatsApp."
             return {
                 "status": "success",
-                "message": f"Message sent to {contact} on WhatsApp.",
+                "message": msg,
             }
-        error = result.get("error") or "Failed to send WhatsApp message."
+        error = result.get("error") or "Failed to access WhatsApp."
         return {"status": "failed", "error": error, "message": error}
+
+    async def confirm_whatsapp_send(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
+        import platform, subprocess
+        if platform.system() == "Darwin":
+            script = '''
+            tell application "WhatsApp" to activate
+            delay 0.2
+            tell application "System Events"
+                tell process "WhatsApp"
+                    key code 36
+                end tell
+            end tell
+            '''
+            try:
+                subprocess.run(["osascript", "-e", script], check=True, timeout=5)
+                return {"status": "success", "message": "Message sent on WhatsApp, Boss."}
+            except Exception as e:
+                return {"status": "failed", "error": str(e), "message": "Failed to send message."}
+        else:
+            import pyautogui
+            pyautogui.press("enter")
+            return {"status": "success", "message": "Message sent on WhatsApp, Boss."}
 
     async def volume_set(self, raw: str, params: dict[str, Any], state: AgentState) -> ToolResult:
         from executor.local_music_player import (

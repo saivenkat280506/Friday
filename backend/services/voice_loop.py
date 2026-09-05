@@ -29,6 +29,16 @@ from services.websocket_manager import ws_manager
 from stt.stt import last_listen_had_speech, last_listen_mic_ok, listen_stream
 from stt.wake import wait_for_wake_word
 
+try:
+    from stt.duplex import duplex as _duplex  # type: ignore
+except Exception:  # pragma: no cover
+    _duplex = None  # type: ignore
+
+try:
+    from services.presence import presence as _presence  # type: ignore
+except Exception:  # pragma: no cover
+    _presence = None  # type: ignore
+
 logger = logging.getLogger("friday.voice")
 
 _listen_lock = asyncio.Lock()
@@ -146,26 +156,39 @@ async def _await_stt_ready(timeout: float = STT_READY_WAIT_S) -> bool:
     return bool(flags.stt_ready)
 
 
-async def _await_tts_complete(timeout: float = 120.0) -> None:
+async def _await_tts_complete(timeout: float = 30.0) -> None:
     """Wait until Pocket/streaming TTS finishes so the mic is not re-opened too early."""
-    from tts.pocket_tts import is_speaking, is_streaming
+    from tts.pocket_tts import is_tts_active, is_speaking, is_streaming
 
     deadline = time.time() + timeout
     while time.time() < deadline:
-        speaking = (
-            get_state() == SystemState.SPEAKING
-            or is_speaking()
-            or is_streaming()
-        )
-        if not speaking:
-            await asyncio.sleep(0.15)
-            if (
-                get_state() != SystemState.SPEAKING
-                and not is_speaking()
-                and not is_streaming()
-            ):
+        speaking = is_tts_active() or is_speaking() or is_streaming()
+        tail = False
+        if _duplex is not None:
+            try:
+                tail = _duplex.is_in_tail()
+            except Exception:
+                tail = False
+        if not speaking and not tail:
+            await asyncio.sleep(0.12)
+            # double-check after acoustic tail guard
+            still_tail = False
+            if _duplex is not None:
+                try:
+                    still_tail = _duplex.is_in_tail()
+                except Exception:
+                    pass
+            if not is_tts_active() and not is_speaking() and not is_streaming() and not still_tail:
                 return
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.08)
+    # final tail drain even on timeout path
+    if _duplex is not None:
+        try:
+            remain = _duplex.tail_remaining_ms()
+            if remain > 0:
+                await asyncio.sleep(min(remain / 1000.0, 0.6))
+        except Exception:
+            pass
 
 
 def _time_of_day() -> str:
@@ -179,12 +202,33 @@ def _time_of_day() -> str:
 
 def _mic_reserved() -> bool:
     """True when the wake-word detector must release the microphone."""
+    # Duplex hard gate — during TTS or acoustic tail, wake detector must stay off
+    if _duplex is not None:
+        try:
+            if not _duplex.can_listen():
+                return True
+        except Exception:
+            pass
     try:
         from tts.pocket_tts import is_tts_active
 
         tts_busy = is_tts_active()
     except Exception:
         tts_busy = False
+    # also check duplex tail explicitly if duplex not available
+    if _duplex is not None:
+        try:
+            if _duplex.is_in_tail():
+                return True
+        except Exception:
+            pass
+    # Presence gate — SLEEP mode means mic is physically off
+    if _presence is not None:
+        try:
+            if _presence.is_sleeping():
+                return True
+        except Exception:
+            pass
     return (
         flags.force_listen_trigger
         or flags.pending_ui_listen
@@ -247,6 +291,14 @@ async def _run_wake_detector() -> None:
             continue
 
         if flags.continuous_voice_mode:
+            # QUIET/SLEEP presence mode disables continuous auto-listen
+            if _presence is not None:
+                try:
+                    if not _presence.can_listen_continuous():
+                        await asyncio.sleep(0.5)
+                        continue
+                except Exception:
+                    pass
             if time.time() < flags.stt_mic_paused_until:
                 await asyncio.sleep(0.5)
                 continue
@@ -278,6 +330,14 @@ async def _run_wake_detector() -> None:
         if _mic_reserved():
             await asyncio.sleep(0.1)
             continue
+        try:
+            from tts.pocket_tts import is_tts_active
+
+            if is_tts_active():
+                await asyncio.sleep(0.15)
+                continue
+        except Exception:
+            pass
 
         def _barge_in() -> None:
             if get_state() == SystemState.SPEAKING:
@@ -368,7 +428,7 @@ async def _handle_listen_cycle() -> None:
             from stt.audio_prep import release_mic_blockers
 
             release_mic_blockers()
-            await asyncio.sleep(0.35)
+            await asyncio.sleep(0.7)
             loop = asyncio.get_event_loop()
 
             def partial_cb(
@@ -407,9 +467,40 @@ async def _handle_listen_cycle() -> None:
                 logger.warning("STT listen timed out — releasing mic")
                 stop_event.set()
                 raw_text = ""
+            with state_lock:
+                flags.is_listening = False
             command_text = _clean_transcript(raw_text)
+            if command_text:
+                try:
+                    from stt.correct import correct_transcript
+
+                    command_text = _clean_transcript(correct_transcript(command_text))
+                except Exception:
+                    pass
+            # ── Phase 0 duplex echo / tail guard (spec §3) ──────────
+            if command_text and _duplex is not None:
+                try:
+                    drop, reason = _duplex.should_drop_transcript(command_text)
+                    if drop:
+                        logger.info("Duplex dropped transcript (%s): %r", reason, command_text)
+                        # also check raw for barge-in exception logging
+                        if _duplex.is_barge_in(command_text):
+                            logger.info("Barge-in allowed despite drop: %r", command_text)
+                        else:
+                            command_text = ""
+                            # treat as no speech so we don't nag
+                            raw_text = ""
+                except Exception as exc:
+                    logger.debug("Duplex check skipped: %s", exc)
             mic_ok = last_listen_mic_ok()
             had_speech = last_listen_had_speech()
+            # If duplex says tail/TTS, override had_speech so we don't treat as real
+            if not command_text and _duplex is not None:
+                try:
+                    if _duplex.is_tts_active() or _duplex.is_in_tail():
+                        had_speech = False
+                except Exception:
+                    pass
 
             if flags.is_processing:
                 wait_deadline = time.time() + 12.0
@@ -440,13 +531,19 @@ async def _handle_listen_cycle() -> None:
                 if command_text:
                     logger.debug("Voice command not processed: %r", command_text)
                 elif mic_ok and had_speech:
-                    await ws_manager.broadcast_chat(
-                        "I heard you but couldn't make out the words — try speaking a bit closer to the mic."
-                    )
+                    # Continuous mode often captures TTS tail or room noise.
+                    # Don't nag — stay listening so the next real command works.
+                    if flags.continuous_voice_mode:
+                        logger.info("Empty transcript after speech — staying quiet")
+                    else:
+                        await ws_manager.broadcast_chat(
+                            "I didn't catch that. Say it again when you're ready."
+                        )
                 elif mic_ok:
-                    await ws_manager.broadcast_chat(
-                        "I didn't catch that — wait for Listening, then speak clearly."
-                    )
+                    if not flags.continuous_voice_mode:
+                        await ws_manager.broadcast_chat(
+                            "I didn't catch that. Wait for Listening, then speak."
+                        )
                 else:
                     logger.warning(
                         "Mic capture failed (%d consecutive) — backing off relisten",

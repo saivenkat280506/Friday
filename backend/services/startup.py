@@ -13,6 +13,8 @@ import asyncio
 import logging
 from typing import Awaitable, Callable
 
+_launch_announced = False
+
 from services.service_config import ServiceConfig
 from services.vision_service import vision_agent
 from services.voice_loop import voice_command_loop
@@ -20,6 +22,73 @@ from services.voice_loop import voice_command_loop
 logger = logging.getLogger("friday.startup")
 
 ServiceStarter = Callable[[asyncio.AbstractEventLoop], Awaitable[None]]
+
+
+async def _wait_for_desktop(timeout: float = 25.0) -> None:
+    from services.shutdown import is_shutting_down
+    from services.websocket_manager import ws_manager
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        if is_shutting_down():
+            return
+        if ws_manager.active_connections:
+            await asyncio.sleep(0.8)
+            return
+        await asyncio.sleep(0.25)
+
+
+async def _announce_online() -> None:
+    """Speak the time-of-day launch line once, in F.R.I.D.A.Y.'s voice."""
+    global _launch_announced
+    if _launch_announced:
+        return
+    from services.shutdown import is_shutting_down
+    if is_shutting_down():
+        return
+    from brain.personality import launch_greeting_line
+    from brain.settings import is_muted
+    from services.runtime_state import SystemState, flags, set_state
+    from services.websocket_manager import ws_manager
+    from tts.hybrid_tts import speak_hybrid
+
+    line = launch_greeting_line()
+    flags.last_assistant_response = line
+    await _wait_for_desktop()
+    if is_shutting_down():
+        return
+    _launch_announced = True
+    logger.info("Launch greeting: %s", line)
+    await ws_manager.broadcast_chat(line)
+    await ws_manager.broadcast_json({"type": "system_ready"})
+    if not is_muted():
+        await set_state(SystemState.SPEAKING)
+        await asyncio.sleep(0.25)
+        await speak_hybrid(line, is_smart=False, response_id="launch_greeting")
+    if is_shutting_down():
+        return
+    await _enable_voice_mode_after_greeting()
+
+
+async def _enable_voice_mode_after_greeting() -> None:
+    """Keep the mic in continuous voice mode after the launch line."""
+    from services.event_bus import BusEvent, event_bus
+    from services.runtime_state import SystemState, flags, set_state, stop_event
+    from services.websocket_manager import ws_manager
+
+    flags.continuous_voice_mode = True
+    flags.voice_session_active = True
+    flags.stop_listen_trigger = False
+    flags.force_listen_trigger = False
+    flags.pending_ui_listen = False
+    flags.relisten_hold_until = 0.0
+    flags.stt_consecutive_failures = 0
+    stop_event.clear()
+    await set_state(SystemState.IDLE_LISTENING)
+    await ws_manager.broadcast_json({"type": "voice_mode", "active": True})
+    event_bus.emit_nowait(BusEvent("wake"))
+    logger.info("Voice mode ON — continuous listening after greeting")
 
 
 async def _start_watchdog_heartbeat(loop: asyncio.AbstractEventLoop) -> None:
@@ -73,6 +142,7 @@ async def _start_tts_warmup(_loop: asyncio.AbstractEventLoop) -> None:
 
     if is_resource_constrained(ram_threshold=88.0):
         logger.info("Pocket TTS warm-up deferred — RAM constrained")
+        asyncio.create_task(_announce_online(), name="launch-greeting")
         return
 
     async def _warm() -> None:
@@ -83,6 +153,10 @@ async def _start_tts_warmup(_loop: asyncio.AbstractEventLoop) -> None:
             logger.info("Pocket TTS warm-up complete")
         except Exception as exc:
             logger.warning("Pocket TTS warm-up failed: %s", exc)
+        try:
+            await _announce_online()
+        except Exception as exc:
+            logger.warning("Launch greeting failed: %s", exc)
         try:
             from stt.stt import warm_stt_models
 
@@ -114,6 +188,42 @@ async def _start_tts_warmup(_loop: asyncio.AbstractEventLoop) -> None:
 
 
 # Ordered list of background services started at application boot.
+async def _start_ollama_warmup(loop: asyncio.AbstractEventLoop) -> None:
+    """Keep the local model resident so the first user turn is not a cold load."""
+
+    async def _warm() -> None:
+        try:
+            from config import settings, use_ollama
+            if not use_ollama():
+                return
+            from brain.ollama_client import ollama_complete
+
+            await ollama_complete("ok", max_tokens=4, stream=False)
+            logger.info("Ollama warm-up complete (%s)", settings.OLLAMA_MODEL)
+        except Exception as exc:
+            logger.warning("Ollama warm-up failed: %s", exc)
+
+    asyncio.create_task(_warm(), name="ollama-warmup")
+
+
+async def _start_world_watcher(_loop: asyncio.AbstractEventLoop) -> None:
+    """Phase 2 — cheap desktop perception (1s frontmost app/title poll)."""
+    try:
+        from perception.world import start_world_watcher
+        await start_world_watcher()
+    except Exception as exc:
+        logger.warning("World watcher failed to start: %s", exc)
+
+
+async def _start_inner_loop(_loop: asyncio.AbstractEventLoop) -> None:
+    """Phase 3 — heartbeat inner loop (agenda + attention policy)."""
+    try:
+        from services.inner_loop import start_inner_loop
+        await start_inner_loop()
+    except Exception as exc:
+        logger.warning("Inner loop failed to start: %s", exc)
+
+
 BACKGROUND_SERVICES: list[tuple[str, ServiceStarter]] = [
     ("watchdog", _start_watchdog_heartbeat),
     ("agent_loop", _start_agent_loop),
@@ -122,8 +232,11 @@ BACKGROUND_SERVICES: list[tuple[str, ServiceStarter]] = [
     ("background_monitor", _start_background_monitor),
     ("voice_loop", _start_voice_loop),
     ("companion_hotkey", _start_companion_hotkey),
+    ("ollama_warmup", _start_ollama_warmup),
     ("tts_warmup", _start_tts_warmup),
     ("browser_agent", _start_browser_agent),
+    ("world_watcher", _start_world_watcher),   # Phase 2 — desktop perception
+    ("inner_loop", _start_inner_loop),          # Phase 3 — heartbeat
 ]
 
 

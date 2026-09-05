@@ -48,6 +48,14 @@ class ConnectionManager:
     async def broadcast_json(self, payload: dict[str, Any]) -> None:
         await self._broadcast(payload)
 
+    async def close_all(self) -> None:
+        for ws in list(self.active_connections):
+            try:
+                await ws.close()
+            except Exception:
+                pass
+        self.active_connections.clear()
+
 
 ws_manager = ConnectionManager()
 

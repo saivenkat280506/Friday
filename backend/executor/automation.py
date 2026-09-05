@@ -12,23 +12,25 @@ import webbrowser
 import urllib.parse
 import time
 import pyautogui
-from pywinauto import Application, keyboard
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+try:
+    from pywinauto import Application, keyboard
+except ImportError:
+    Application = None
+    keyboard = None
+import threading
 from config import settings
 from executor.error_handler import retry_task, retry_async_task
 
 pyautogui.PAUSE = 0.05
 
-try:
-    import cv2
-    import numpy as np
-    from mss import mss
-    import threading
-    import pyperclip
-    HAS_RECORDING_DEPS = True
-except ImportError:
-    HAS_RECORDING_DEPS = False
+def _check_recording_deps() -> bool:
+    try:
+        import cv2  # noqa: F401
+        import numpy as np  # noqa: F401
+        from mss import mss  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def _safe_click(x: int, y: int) -> bool:
@@ -43,6 +45,23 @@ def _safe_click(x: int, y: int) -> bool:
         print(f"[Automation] Click failed: {e}")
         return False
 
+
+def resolve_whatsapp_number(name: str, number: str | None = None) -> tuple[bool, str, str, str]:
+    """Resolve a contact name or explicit number using phonebook."""
+    from executor.whatsapp_phonebook import resolve_contact_keyword
+    name_str = (name or "").strip()
+    if name_str.lower() in ("everyone", "the group", "all", "all contacts", "group"):
+        return False, "", "", "Group/broadcast target not supported directly"
+    if number and not number.startswith("+91..."):
+        clean_num = "".join(c for c in number if c.isdigit() or c == "+")
+        if len(clean_num) >= 10:
+            return True, clean_num, name_str, ""
+    display_name, queries, from_book = resolve_contact_keyword(name_str)
+    if from_book and queries:
+        digits = "".join(c for c in queries[0] if c.isdigit() or c == "+")
+        return True, digits or queries[0], display_name, ""
+    return False, "", "", f"Could not resolve contact '{name_str}'"
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SCREEN RECORDER COMPONENT
 # ══════════════════════════════════════════════════════════════════════════════
@@ -55,7 +74,7 @@ class ScreenRecorder:
         self.thread = None
         
     def start(self):
-        if not HAS_RECORDING_DEPS:
+        if not _check_recording_deps():
             print("[ScreenRecorder] Missing dependencies (cv2, numpy, mss). Cannot record.")
             return
         self.recording = True
@@ -72,6 +91,10 @@ class ScreenRecorder:
         
     def _record_loop(self):
         try:
+            import cv2
+            import numpy as np
+            from mss import mss
+
             with mss() as sct:
                 monitor = sct.monitors[1]  # Primary monitor
                 width = monitor["width"]
@@ -104,20 +127,26 @@ class ScreenRecorder:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _find_chrome_path():
-    """Locate chrome.exe on the system."""
+    """Locate Google Chrome on Windows or macOS."""
     import shutil
-    chrome_path = shutil.which("chrome.exe") or shutil.which("chrome")
+    chrome_path = shutil.which("chrome.exe") or shutil.which("chrome") or shutil.which("google-chrome")
     if chrome_path:
         return chrome_path
     search_paths = [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
         os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Google\Chrome\Application\chrome.exe"),
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
     ]
     for path in search_paths:
-        if os.path.exists(path):
+        if path and os.path.exists(path):
             return path
-    return None
+    try:
+        from executor.sys_platform import chrome_executable
+        return chrome_executable()
+    except Exception:
+        return None
 
 
 def open_browser(manual_path=None):
@@ -242,12 +271,19 @@ def _whatsapp_process_pids() -> set[int]:
 
 
 def is_whatsapp_running() -> bool:
-    """True only when WhatsApp.exe is actually running (not IDE/browser tabs)."""
+    """True only when WhatsApp is actually running."""
+    import platform
+    if platform.system() == "Darwin":
+        try:
+            res = subprocess.run(["pgrep", "-i", "whatsapp"], capture_output=True)
+            return res.returncode == 0
+        except Exception:
+            return False
     return bool(_whatsapp_process_pids())
 
 
 def _hwnd_belongs_to_whatsapp(hwnd: int) -> bool:
-    """Return True if hwnd belongs to a WhatsApp.exe process."""
+    """Return True if hwnd belongs to a WhatsApp process."""
     if not hwnd:
         return False
     try:
@@ -261,11 +297,11 @@ def _hwnd_belongs_to_whatsapp(hwnd: int) -> bool:
 
 def _get_whatsapp_window():
     """
-    Find the WhatsApp Desktop window via pywinauto.
-
-    Must belong to WhatsApp.exe — never match IDE/browser titles that contain
-    the word 'WhatsApp' (e.g. Grok/Cursor chat tabs).
+    Find the WhatsApp Desktop window via pywinauto on Windows.
     """
+    import platform
+    if platform.system() == "Darwin":
+        return None
     pids = _whatsapp_process_pids()
     if not pids:
         return None
@@ -327,6 +363,14 @@ def _find_whatsapp_executable() -> str | None:
 
 def open_whatsapp():
     """Opens WhatsApp Desktop, waits for the window, and ensures it's focused."""
+    import platform
+    if platform.system() == "Darwin":
+        try:
+            subprocess.run(["open", "-a", "WhatsApp"], check=True)
+            return True, "Successfully opened WhatsApp."
+        except Exception as e:
+            return False, f"Failed to launch WhatsApp: {e}"
+    
     launched = False
     whatsapp_path = _find_whatsapp_executable()
 
@@ -603,29 +647,40 @@ def search_and_summarize_in_notepad(query: str):
         with open(filepath, "r", encoding="utf-8") as f:
             notepad_content = f.read()
             
-        # 5. Call Groq LLM to summarize the findings
-        import httpx
-        groq_key = settings.GROQ_API_KEY
-        if groq_key:
+        # 5. Summarize findings with the configured LLM (local Ollama or Groq)
+        from brain.ollama_client import get_ollama
+        from config import use_ollama
+
+        summarize_prompt = (
+            __import__(
+                "brain.friday_persona", fromlist=["build_summarize_prompt"]
+            ).build_summarize_prompt()
+            + " Use the 5-step speech flow briefly. End with readiness for Boss."
+        )
+        if use_ollama():
+            summary_text = get_ollama().complete_sync(
+                notepad_content,
+                system=summarize_prompt,
+                max_tokens=200,
+                temperature=0.3,
+            ) or f"Here is the collected intelligence: {res1[:150]}..."
+        elif settings.GROQ_API_KEY:
+            import httpx
             payload = {
-                "model": "llama-3.1-8b-instant",
+                "model": "openai/gpt-oss-20b",
                 "messages": [
-                    {
-                        "role": "system", 
-                        "content": (
-                            __import__(
-                                "brain.friday_persona", fromlist=["build_summarize_prompt"]
-                            ).build_summarize_prompt()
-                            + " Use the 5-step speech flow briefly. End with readiness for Boss."
-                        )
-                    },
-                    {"role": "user", "content": notepad_content}
+                    {"role": "system", "content": summarize_prompt},
+                    {"role": "user", "content": notepad_content},
                 ],
                 "temperature": 0.3,
-                "max_tokens": 200
+                "max_tokens": 200,
             }
             with httpx.Client(timeout=10.0) as client:
-                r = client.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {groq_key}"}, json=payload)
+                r = client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                    json=payload,
+                )
                 summary_text = r.json()["choices"][0]["message"]["content"].strip()
         else:
             summary_text = f"Here is the collected intelligence: {res1[:150]}..."
@@ -873,28 +928,36 @@ def smart_search(query: str):
     except Exception as ex:
         print(f"[SmartSearch] DDG HTML scrape failed: {ex}")
 
-    # ── Tier 3: Direct Groq LLM answer ──────────────────────────────────────
-    groq_key = settings.GROQ_API_KEY
-    if not groq_key:
-        return False, "I wasn't able to find an answer right now, boss."
-    payload = {
-        "model": "llama-3.1-8b-instant",
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    __import__(
-                        "brain.friday_persona", fromlist=["build_chat_system_prompt"]
-                    ).build_chat_system_prompt()
-                    + "\nAnswer in 2-4 short spoken sentences. No bullets or markdown."
-                ),
-            },
-            {"role": "user", "content": query},
-        ],
-        "temperature": 0.3,
-        "max_tokens": 220,
-    }
+    # ── Tier 3: Direct LLM answer (local Ollama, or Groq if still configured)
+    from brain.ollama_client import get_ollama
+    from config import use_ollama
+
+    chat_system = (
+        __import__(
+            "brain.friday_persona", fromlist=["build_chat_system_prompt"]
+        ).build_chat_system_prompt()
+        + "\nAnswer in 2-4 short spoken sentences. No bullets or markdown."
+    )
     try:
+        if use_ollama():
+            answer = get_ollama().complete_sync(
+                query, system=chat_system, max_tokens=220, temperature=0.3
+            )
+            if answer:
+                return True, answer
+            return False, "I wasn't able to find an answer right now, boss."
+        groq_key = settings.GROQ_API_KEY
+        if not groq_key:
+            return False, "I wasn't able to find an answer right now, boss."
+        payload = {
+            "model": "openai/gpt-oss-20b",
+            "messages": [
+                {"role": "system", "content": chat_system},
+                {"role": "user", "content": query},
+            ],
+            "temperature": 0.3,
+            "max_tokens": 220,
+        }
         with httpx.Client(timeout=12.0) as client:
             r = client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -905,7 +968,7 @@ def smart_search(query: str):
             answer = r.json()["choices"][0]["message"]["content"].strip()
             return True, answer
     except Exception as exc:
-        print(f"[SmartSearch] Groq fallback error: {exc}")
+        print(f"[SmartSearch] LLM fallback error: {exc}")
         return False, "I wasn't able to fetch an answer right now, boss."
 
 def play_yt_music(song):

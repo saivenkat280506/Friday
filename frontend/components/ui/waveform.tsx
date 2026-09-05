@@ -774,6 +774,13 @@ export const LiveMicrophoneWaveform = ({
   const dragStartXRef = useRef<number>(0)
   const dragStartOffsetRef = useRef<number>(0)
   const playbackStartTimeRef = useRef<number>(0)
+  const [historyCount, setHistoryCount] = useState(0)
+
+  useEffect(() => {
+    if (!active) {
+      setHistoryCount(historyRef.current?.length || 0)
+    }
+  }, [active, historyRef])
 
   // Audio recording and playback refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -1300,29 +1307,29 @@ export const LiveMicrophoneWaveform = ({
     <div
       className={cn(
         "relative flex items-center",
-        !active && historyRef.current.length > 0 && "cursor-pointer",
+        !active && historyCount > 0 && "cursor-pointer",
         className
       )}
       onMouseDown={handleMouseDown}
       ref={containerRef}
-      role={!active && historyRef.current.length > 0 ? "slider" : undefined}
+      role={!active && historyCount > 0 ? "slider" : undefined}
       aria-label={
-        !active && historyRef.current.length > 0
+        !active && historyCount > 0
           ? "Drag to scrub through recording"
           : undefined
       }
       aria-valuenow={
-        !active && historyRef.current.length > 0
+        !active && historyCount > 0
           ? Math.abs(dragOffset)
           : undefined
       }
-      aria-valuemin={!active && historyRef.current.length > 0 ? 0 : undefined}
+      aria-valuemin={!active && historyCount > 0 ? 0 : undefined}
       aria-valuemax={
-        !active && historyRef.current.length > 0
-          ? historyRef.current.length
+        !active && historyCount > 0
+          ? historyCount
           : undefined
       }
-      tabIndex={!active && historyRef.current.length > 0 ? 0 : undefined}
+      tabIndex={!active && historyCount > 0 ? 0 : undefined}
       style={{ height: heightStyle }}
       {...props}
     >

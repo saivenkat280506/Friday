@@ -5,7 +5,10 @@ import subprocess
 import time
 import os
 import sys
-from pywinauto import Application
+try:
+    from pywinauto import Application
+except ImportError:
+    Application = None
 import pyautogui
 from executor.window_manager import split_screen
 

@@ -50,6 +50,9 @@ class IntentCategory(str, Enum):
     TIMER            = "timer"
     MULTI_STEP       = "multi_step"
     CLARIFY          = "clarify"
+    PRESENCE_MODE    = "presence_mode"   # set Friday's presence: sleep / quiet / resident
+    STOP             = "stop"            # cancel all current tasks and speech immediately
+    STANDING_ORDER   = "standing_order"  # add/remove a persistent instruction
     UNKNOWN          = "unknown"
 
 
@@ -82,7 +85,7 @@ class AgentState(TypedDict):
     needs_clarification: bool
     clarification_prompt: Optional[str]
     plan:               list[str]
-    tool_calls:         Annotated[list[ToolCall], operator.add]
+    tool_calls:         list[ToolCall]
     current_step:       int
     max_retries:        int
     short_term:         list[dict]

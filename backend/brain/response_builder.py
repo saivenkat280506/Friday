@@ -1,8 +1,7 @@
 """
-response_builder.py — F.R.I.D.A.Y. Dialogue System
-=====================================================
-Centralized spoken output. Fierce loyalty to Boss, high operational tempo,
-Irish-leaning crisp delivery. See brain/friday_persona.py for full identity.
+response_builder.py — Friday dialogue banks
+==========================================
+Short spoken lines. "boss" is optional, never mandatory. See friday_persona.py.
 """
 
 import random
@@ -23,29 +22,28 @@ BANKS = {
         "Consider it done.",
     ],
     "acknowledge_boss": [
-        "On it, Boss.",
-        "Right away, Boss.",
-        "At your service, Boss.",
-        "Copy that, Boss. Handling it now.",
-        "Roger, Boss.",
+        "On it, boss.",
+        "Give me a sec, boss. Let me check.",
+        "On it.",
+        "I'll take care of it.",
+        "Working it now, boss.",
     ],
 
     # ── Task Completion ─────────────────────────────────────────────────────────
     "complete": [
         "Done.",
-        "All finished.",
-        "There you go.",
+        "Found it.",
+        "There we go.",
         "That's taken care of.",
         "All set.",
-        "Finished.",
         "That's done.",
     ],
     "complete_boss": [
-        "Done, Boss.",
-        "Mission complete, Boss.",
-        "There you go, Boss.",
-        "All set, Boss.",
-        "That's handled, Boss.",
+        "Done, boss.",
+        "Found it.",
+        "There we go.",
+        "All set, boss.",
+        "That's handled.",
     ],
 
     # ── Clarification Requests ─────────────────────────────────────────────────
@@ -86,41 +84,41 @@ BANKS = {
 
     # ── Thinking Fillers ────────────────────────────────────────────────────────
     "thinking": [
-        "One moment.",
-        "Let me think about that.",
+        "On it.",
+        "Give me a sec.",
+        "Let me check.",
         "Working on it.",
         "Just a second.",
-        "Processing that.",
     ],
     "thinking_boss": [
-        "Give me a sec, Boss. Scanning now.",
-        "Running numbers, Boss.",
-        "One moment, Boss. Pulling that up.",
-        "Stand by, Boss. Working the problem.",
+        "Give me a sec, boss. Let me check.",
+        "On it.",
+        "One moment. Pulling that up.",
+        "Let me look into that.",
     ],
 
     # ── Greetings ──────────────────────────────────────────────────────────────
     "greeting_morning": [
-        "Morning, Boss. All systems nominal. What do you need?",
-        "Greetings, Boss. Early start today. I'm online.",
+        "Morning. What are we working on?",
+        "Morning, boss. I'm here.",
     ],
     "greeting_afternoon": [
-        "Afternoon, Boss. Ready when you are.",
-        "Greetings, Boss. Systems green. What's the mission?",
+        "Afternoon. Ready when you are.",
+        "Hey. What's the plan?",
     ],
     "greeting_evening": [
-        "Evening, Boss. Still sharp and online.",
-        "Greetings, Boss. Long day — what can I run for you?",
+        "Evening. Still at it?",
+        "Hey, boss. What do you need?",
     ],
     "greeting_night": [
-        "Boss, you're up late. I'm with you. What are we tackling?",
-        "Greetings, Boss. Burning the midnight oil. I'm on it.",
+        "You're up late. I'm with you.",
+        "Quiet hour. What are we tackling?",
     ],
 
     # ── Intro ───────────────────────────────────────────────────────────────────
     "intro": [
-        "Here's my introduction, Boss.",
-        "Allow me to introduce myself, Boss.",
+        "I'm Friday. I research, run tools, and help you get things done.",
+        "Friday. Think of me as the assistant who already started the next step.",
     ],
 
     # ── Focus / Window ──────────────────────────────────────────────────────────
@@ -138,8 +136,8 @@ BANKS = {
 
     # ── News ────────────────────────────────────────────────────────────────────
     "news_start": [
-        "Checking the latest headlines.",
-        "Pulling the news feed now.",
+        "Give me a sec, boss. Let me check.",
+        "On it. Pulling the latest.",
     ],
 
     # ── Background ──────────────────────────────────────────────────────────────
@@ -162,9 +160,9 @@ class ResponseBuilder:
     Centralized dialogue engine.
     
     Rules:
-    - Always address the user as "Boss" (capital B) in spoken lines
-    - Short confirmations may omit Boss only if under five words
-    - Match F.R.I.D.A.Y. persona: crisp, loyal, high-tempo, Irish-leaning cadence
+    - "boss" is optional and occasional, never every line
+    - Short confirmations usually skip it
+    - Calm, concise, capable — never theatrical
     """
 
     def __init__(self):
@@ -233,9 +231,9 @@ class ResponseBuilder:
     def close(self) -> str:
         """Readiness close — step 5 of speech template."""
         return random.choice([
-            "What else, Boss?",
-            "Standing by, Boss.",
-            "Ready for the next one, Boss.",
+            "What else?",
+            "I'm here.",
+            "Whenever you're ready.",
         ])
 
     def intro(self) -> str:
@@ -285,8 +283,8 @@ class ResponseBuilder:
 
         should_have_boss = use_boss
         if should_have_boss is None:
-            words = text.split()
-            should_have_boss = len(words) >= 5 and "?" not in text
+            # Default: do not inject "boss". The spec is occasional, not automatic.
+            should_have_boss = False
 
         if boss_count == 0 and should_have_boss:
             text = text.rstrip(".!?")

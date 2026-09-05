@@ -20,6 +20,18 @@ Write-Host "Stopping FRIDAY..." -ForegroundColor Yellow
 Stop-PortListener 8000
 Stop-PortListener 3000
 
+$Ollama = Get-Command ollama -ErrorAction SilentlyContinue
+if ($Ollama) {
+    Write-Host "Stopping Ollama model..."
+    & ollama stop qwen3.5:4b 2>$null
+    & ollama stop gemma4:e4b-mlx 2>$null
+}
+Stop-PortListener 11434
+Get-Process -Name ollama -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Host "Stopping ollama (PID $($_.Id))"
+    Stop-Process -Id $_.Id -Force
+}
+
 # Keep the Alt+Space companion hotkey agent running so cold-start still works.
 
 Get-Process -Name electron -ErrorAction SilentlyContinue | ForEach-Object {

@@ -13,7 +13,18 @@ import httpx
 
 logger = logging.getLogger("friday.groq")
 
-DEFAULT_MODEL = "llama-3.1-8b-instant"
+DEFAULT_MODEL = "openai/gpt-oss-20b"
+_MODEL_ALIASES = {
+    "llama-3.1-8b-instant": "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile": "openai/gpt-oss-120b",
+    "llama3.1": "openai/gpt-oss-20b",
+    "llama3.3": "openai/gpt-oss-120b",
+}
+
+
+def resolve_groq_model(model: str | None) -> str:
+    name = (model or DEFAULT_MODEL).strip()
+    return _MODEL_ALIASES.get(name, name) or DEFAULT_MODEL
 
 
 def _api_key() -> str:
@@ -36,11 +47,23 @@ async def groq_complete(
     max_tokens: int = 600,
     stream: bool = False,
 ) -> str:
+    try:
+        from config import use_ollama
+        if use_ollama():
+            from brain.ollama_client import ollama_complete
+            return await ollama_complete(
+                prompt, model=model, max_tokens=max_tokens, stream=stream
+            )
+    except Exception as exc:
+        logger.error("Local Ollama dispatch failed: %s", exc)
+        return "My local language model isn't available right now. Make sure Ollama is running."
+
     key = _api_key()
     if not key:
-        return "[Groq API key not configured]"
+        logger.error("GROQ_API_KEY is missing from backend/.env")
+        return "My language service isn't configured. Add a Groq API key, then try again."
 
-    groq_model = model if model and str(model).startswith("llama") else DEFAULT_MODEL
+    groq_model = resolve_groq_model(model)
     queue = None
     if stream:
         try:
@@ -102,13 +125,18 @@ async def groq_complete(
                 return resp.json()["choices"][0]["message"]["content"].strip()
         except Exception as exc:
             last_exc = exc
+            err = str(exc).lower()
+            if ("404" in err or "decommissioned" in err or "not found" in err or "model" in err) and groq_model != DEFAULT_MODEL:
+                logger.warning("Groq model %s failed (%s) — retrying %s", groq_model, exc, DEFAULT_MODEL)
+                groq_model = DEFAULT_MODEL
+                continue
             if _is_rate_limited(exc) and attempt < 2:
                 delay = 1.5 * (attempt + 1)
                 logger.warning("Groq rate limited — retry in %.1fs", delay)
                 await asyncio.sleep(delay)
                 continue
             logger.error("Groq completion failed: %s", exc)
-            return f"[Groq unavailable: {exc}]"
+            return "My language service isn't available right now. Try that again in a moment."
 
     logger.error("Groq completion failed after retries: %s", last_exc)
-    return f"[Groq unavailable: {last_exc}]"
+    return "My language service isn't available right now. Try that again in a moment."

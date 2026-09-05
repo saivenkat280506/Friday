@@ -10,6 +10,7 @@ Layers:
 3. Queue & Worker: Pushes partial updates off-thread and handles transcription.
 """
 
+import collections
 import io
 import math
 import os
@@ -25,6 +26,12 @@ from faster_whisper import WhisperModel
 
 from config import settings
 from stt.audio_prep import release_mic_blockers
+
+# Phase 0 duplex controller (graceful fallback if import fails during tests)
+try:
+    from stt.duplex import duplex as _duplex  # type: ignore
+except Exception:  # pragma: no cover
+    _duplex = None  # type: ignore
 
 # ── Configuration ────────────────────────────────────────────────────────────
 MODEL_SIZE    = settings.STT_MODEL
@@ -46,10 +53,10 @@ PRE_SPEECH_TIMEOUT_FRAMES = max(
     SILENCE_LIMIT_FRAMES * 2,
     int(round(settings.STT_PRE_SPEECH_TIMEOUT_S * 1000 / FRAME_DURATION)),
 )
-MIN_SPEECH_FRAMES = 3    # ~90ms sustained speech before arming capture
-CALIBRATION_FRAMES = 12  # ~360ms ambient noise calibration at mic open
-PARTIAL_INTERVAL  = 0.55  # Live companion preview — local tiny model only
-PARTIAL_TAIL_MS   = 2200  # Only transcribe recent audio for live preview
+MIN_SPEECH_FRAMES = 4    # ~120ms sustained speech before arming capture
+MIN_UTTERANCE_SPEECH_FRAMES = 8  # ~240ms of real speech before we transcribe
+CALIBRATION_FRAMES = 10  # ~300ms ambient noise calibration at mic open
+PARTIAL_INTERVAL  = 0.40  # Live companion preview
 TRANSCRIBE_TIMEOUT_S    = 18.0
 
 _groq_client = None
@@ -190,26 +197,25 @@ def _frame_is_speech(
 ) -> bool:
     """WebRTC VAD plus adaptive RMS gate — rejects distant/background voices."""
     rms = _frame_rms(frame_array)
-    threshold = max(float(SPEECH_RMS), noise_floor[0] * SPEECH_SNR_MULT)
     vad_says = vad.is_speech(frame, SAMPLE_RATE)
-    # WebRTC VAD + adaptive RMS; soft floor so laptop array mics still arm.
-    is_speech = vad_says and rms >= threshold * 0.32
+    gate = max(18.0, noise_floor[0] * 1.15)
+    is_speech = vad_says and (rms >= gate)
     if not is_speech:
-        noise_floor[0] = noise_floor[0] * (1.0 - NOISE_FLOOR_ALPHA) + rms * NOISE_FLOOR_ALPHA
+        noise_floor[0] = noise_floor[0] * (1.0 - NOISE_FLOOR_ALPHA) + min(rms, 40.0) * NOISE_FLOOR_ALPHA
     return is_speech
 
 
 def _get_partial_model() -> WhisperModel | None:
-    """Tiny on-device model for live partials — never hits Groq (avoids 429 + lag)."""
+    """Fast on-device model for live partials — never hits Groq (avoids 429 + lag)."""
     global _partial_model
     if _partial_model is None:
         try:
-            name = getattr(settings, "STT_PARTIAL_MODEL", "tiny.en") or "tiny.en"
+            name = getattr(settings, "STT_PARTIAL_MODEL", "base.en") or "base.en"
             _partial_model = WhisperModel(
                 name,
                 device=settings.STT_DEVICE,
                 compute_type=COMPUTE_TYPE,
-                cpu_threads=2,
+                cpu_threads=max(2, (os.cpu_count() or 4) - 2),
             )
         except Exception as exc:
             print(f"[STT] Partial model load failed: {exc}")
@@ -219,7 +225,7 @@ def _get_partial_model() -> WhisperModel | None:
 
 def transcribe_partial_local(pcm_bytes: bytes) -> str:
     """Fast local preview transcript for companion UI only."""
-    if len(pcm_bytes) < FRAME_SIZE * 6:
+    if len(pcm_bytes) < FRAME_SIZE * 5:
         return ""
     model = _get_partial_model()
     if model is None:
@@ -232,10 +238,13 @@ def transcribe_partial_local(pcm_bytes: bytes) -> str:
             audio_array,
             beam_size=1,
             language="en",
-            vad_filter=False,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=250),
             condition_on_previous_text=False,
+            initial_prompt="F.R.I.D.A.Y., Friday",
         )
-        return " ".join(seg.text.strip() for seg in segments).strip()
+        parts = [seg.text.strip() for seg in segments if seg.text and seg.text.strip()]
+        return " ".join(parts).strip()
     except Exception:
         return ""
 
@@ -343,16 +352,16 @@ def transcribe_local(pcm_bytes: bytes) -> str:
     if model is None:
         return ""
     audio_array = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-    segments, _ = model.transcribe(
-        audio_array,
-        beam_size=5,
-        best_of=5,
+    # Audio buffer is already WebRTC VAD gated; disabling internal vad_filter prevents clipping
+    kwargs = dict(
+        beam_size=3,
         language="en",
-        condition_on_previous_text=True,
-        initial_prompt="FRIDAY, F.R.I.D.A.Y., WhatsApp, Chrome, Spotify, YouTube, note, message.",
-        vad_filter=True,
-        vad_parameters=dict(min_silence_duration_ms=400),
+        condition_on_previous_text=False,
+        initial_prompt="Hey Friday, compare Asus and MacBook, what's on my screen, open Chrome, Spotify, code, terminal, weather, time.",
+        vad_filter=False,
+        temperature=0.0,
     )
+    segments, _ = model.transcribe(audio_array, **kwargs)
     return " ".join(segment.text.strip() for segment in segments).strip()
 
 _last_mic_ok = True
@@ -381,13 +390,14 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
     def _emit_partial(text: str, countdown: int | None = None, phase: str | None = None) -> None:
         if not partial_cb:
             return
+        out_text = text if (text and text.strip()) else (last_ui_text[0] if last_ui_text[0].strip() else "")
         try:
             if phase is not None:
-                partial_cb(text, countdown=countdown, phase=phase)
+                partial_cb(out_text, countdown=countdown, phase=phase)
             else:
-                partial_cb(text, countdown=countdown)
+                partial_cb(out_text, countdown=countdown)
         except TypeError:
-            partial_cb(text, countdown=countdown)
+            partial_cb(out_text, countdown=countdown)
         except Exception:
             pass
 
@@ -397,14 +407,6 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
     done_event = threading.Event()
     final_result = [""]
     last_ui_text = [""]
-    
-    partial_tail_frames = max(8, int(PARTIAL_TAIL_MS / FRAME_DURATION))
-
-    def _partial_audio_tail(pcm: bytes) -> bytes:
-        frame_bytes = FRAME_SIZE
-        if len(pcm) <= partial_tail_frames * frame_bytes:
-            return pcm
-        return pcm[-partial_tail_frames * frame_bytes :]
 
     # ── STT Worker Thread ──────────────────────────────────────────────────
     def stt_worker():
@@ -412,6 +414,19 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
             item = audio_queue.get()
             if item["type"] == "quit":
                 break
+            # Duplex hard gate: drop any queued audio if we are in TTS/tail
+            # (prevents stale buffered speaker audio from being transcribed after mute)
+            if _duplex is not None and item["type"] in ("partial", "final"):
+                try:
+                    if _duplex.is_tts_active() or _duplex.is_in_tail():
+                        if item["type"] == "final":
+                            # treat as phantom — no command
+                            final_result[0] = ""
+                            done_event.set()
+                            break
+                        continue
+                except Exception:
+                    pass
             
             # Optimize: Drain older partial items to prevent queue buildup and UI lag
             if item["type"] == "partial":
@@ -438,16 +453,17 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
                 if item["type"] == "partial":
                     if done_event.is_set():
                         continue
-                    tail = _partial_audio_tail(audio_bytes)
-                    if len(tail) >= FRAME_SIZE * 4:
-                        text = transcribe_partial_local(tail)
+                    max_partial_bytes = int(10.0 * SAMPLE_RATE * 2)
+                    partial_audio = audio_bytes if len(audio_bytes) <= max_partial_bytes else audio_bytes[-max_partial_bytes:]
+                    if len(partial_audio) >= FRAME_SIZE * 5:
+                        text = transcribe_partial_local(partial_audio)
                         if text:
                             last_ui_text[0] = text
                     current_countdown = item.get("countdown")
                     _emit_partial(last_ui_text[0], countdown=current_countdown)
                     continue
 
-                text = transcribe_audio(audio_bytes, prefer_groq=True)
+                text = transcribe_audio(audio_bytes, prefer_groq=_use_groq_stt())
                 if not text and not _use_groq_stt():
                     model = _get_model()
                     if model:
@@ -462,10 +478,35 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
                         )
                         text = " ".join(seg.text for seg in segments).strip()
 
+                # ── Duplex echo / tail filter (Phase 0) ─────────────────
+                if text and _duplex is not None:
+                    try:
+                        drop, reason = _duplex.should_drop_transcript(text)
+                        if drop:
+                            print(f"[STT Duplex] Dropped final transcript ({reason}): {text!r}")
+                            text = ""
+                            # also clear partial fallback if it was echo
+                            if last_ui_text[0]:
+                                d2, _ = _duplex.should_drop_transcript(last_ui_text[0])
+                                if d2:
+                                    last_ui_text[0] = ""
+                    except Exception as exc:
+                        print(f"[STT Duplex] filter error: {exc}")
+
                 if item["type"] == "final":
-                    # If the final transcribe (often padded with silence) returns empty, 
+                    # If the final transcribe (often padded with silence) returns empty,
                     # fallback to the last valid partial text we generated.
-                    final_result[0] = text if text.strip() else last_ui_text[0]
+                    chosen = text if text.strip() else last_ui_text[0]
+                    # final fallback must also pass duplex
+                    if chosen and _duplex is not None:
+                        try:
+                            d3, r3 = _duplex.should_drop_transcript(chosen)
+                            if d3:
+                                print(f"[STT Duplex] Dropped fallback ({r3}): {chosen!r}")
+                                chosen = ""
+                        except Exception:
+                            pass
+                    final_result[0] = chosen
                     done_event.set()
                     break
                     
@@ -479,7 +520,33 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
     worker_thread.start()
 
     release_mic_blockers()
-    time.sleep(0.15)
+    # ── Duplex hard-mute wait (Phase 0) ────────────────────────────────
+    # Wait for TTS + acoustic tail before arming the mic.
+    # Previously waited max 8s on is_tts_active only; now respects tail
+    # and allows early exit on stop_event (barge-in via hotkey).
+    deadline = time.time() + 8.0
+    while time.time() < deadline:
+        if stop_event is not None and stop_event.is_set():
+            break
+        try:
+            if _duplex is not None:
+                if _duplex.can_listen():
+                    break
+            else:
+                from tts.pocket_tts import is_tts_active
+
+                if not is_tts_active():
+                    break
+        except Exception:
+            break
+        time.sleep(0.12)
+    # Acoustic tail extra guard — ensure we are fully clear
+    if _duplex is not None:
+        remain = _duplex.tail_remaining_ms()
+        if remain > 0:
+            time.sleep(min(remain / 1000.0, 0.6))
+    else:
+        time.sleep(0.2)
 
     # ── sounddevice Mic Stream (callback — blocking read fails on Windows WDM-KS) ─
     frame_queue: queue.Queue = queue.Queue(maxsize=60)
@@ -518,9 +585,11 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
             f"silence={SILENCE_LIMIT_FRAMES * FRAME_DURATION}ms, STT={stt_backend}."
         )
         with sd.InputStream(**stream_kwargs):
+            preroll_buffer = collections.deque(maxlen=16)  # 16 frames * 30ms = 480ms pre-speech audio
             buffer = []
             silence_counter = 0
             speech_streak = 0
+            speech_frame_count = 0
             elapsed_frames = 0
             calibration_frames = 0
             last_partial_time = time.time()
@@ -528,9 +597,36 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
             speech_notified = False
             noise_floor = [max(25.0, SPEECH_RMS * 0.25)]
             calibration_rms: list[float] = []
+            last_countdown: int | None = None
 
             while not done_event.is_set():
                 elapsed_frames += 1
+                # ── Duplex hard mute (Phase 0) ──────────────────────────
+                # While TTS is speaking or tail is active, ignore all mic frames.
+                # This prevents speaker echo from arming VAD / filling buffer.
+                if _duplex is not None:
+                    try:
+                        if _duplex.is_tts_active() or _duplex.is_in_tail():
+                            # drop any partially buffered utterance
+                            if has_spoken or buffer:
+                                buffer.clear()
+                                preroll_buffer.clear()
+                                has_spoken = False
+                                speech_notified = False
+                                speech_frame_count = 0
+                                silence_counter = 0
+                                speech_streak = 0
+                                last_countdown = None
+                            # drain queue to keep latency low
+                            try:
+                                while not frame_queue.empty():
+                                    frame_queue.get_nowait()
+                            except Exception:
+                                pass
+                            time.sleep(0.05)
+                            continue
+                    except Exception:
+                        pass
                 # Check external UI abort
                 if stop_event and stop_event.is_set():
                     print("[STT Pipeline] External stop trigger intercepted.")
@@ -549,9 +645,10 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
                 if calibration_frames < CALIBRATION_FRAMES:
                     calibration_frames += 1
                     calibration_rms.append(frame_rms)
+                    preroll_buffer.append(frame)
                     if calibration_frames == CALIBRATION_FRAMES and calibration_rms:
                         ambient = float(np.median(calibration_rms))
-                        noise_floor[0] = max(20.0, min(ambient, SPEECH_RMS * 0.85))
+                        noise_floor[0] = max(18.0, min(ambient, SPEECH_RMS * 0.70))
                         print(
                             f"[STT Pipeline] Mic calibrated — noise floor={noise_floor[0]:.1f}, "
                             f"gate={max(SPEECH_RMS, noise_floor[0] * SPEECH_SNR_MULT):.1f}"
@@ -559,19 +656,25 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
                         _emit_partial("", phase="open")
                     continue
 
+                preroll_buffer.append(frame)
                 is_speech = _frame_is_speech(vad, frame, frame_array, noise_floor)
 
                 if is_speech:
                     speech_streak += 1
                     silence_counter = 0
-                    if speech_streak >= MIN_SPEECH_FRAMES:
+                    if not has_spoken and speech_streak >= MIN_SPEECH_FRAMES:
+                        has_spoken = True
+                        # Prepend the pre-roll buffer so the start of the sentence is preserved
+                        buffer.extend(preroll_buffer)
+                        speech_frame_count += len(preroll_buffer)
+                        preroll_buffer.clear()
                         if not speech_notified:
                             speech_notified = True
                             _last_had_speech = True
                             _emit_partial("", phase="hearing")
-                        has_spoken = True
                     if has_spoken:
                         buffer.append(frame)
+                        speech_frame_count += 1
                 else:
                     speech_streak = 0
                     silence_counter += 1
@@ -592,18 +695,32 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
                     current_sil_s = (silence_counter * FRAME_DURATION) / 1000.0
                     countdown_val = int(math.ceil(total_sil_limit - current_sil_s)) if current_sil_s > 0.2 and current_sil_s <= total_sil_limit else None
                     
-                    last_countdown = getattr(listen_stream, "_last_cd", None)
+                    countdown_changed = (countdown_val is not None and countdown_val != last_countdown)
                     
                     # Emit partial periodically OR when the countdown ticks a full second
-                    if (now - last_partial_time > PARTIAL_INTERVAL) or (countdown_val is not None and countdown_val != last_countdown):
+                    if (now - last_partial_time > PARTIAL_INTERVAL) or countdown_changed:
                         audio_queue.put({"type": "partial", "data": b"".join(buffer), "countdown": countdown_val})
                         last_partial_time = now
-                        listen_stream._last_cd = countdown_val
+                        last_countdown = countdown_val
 
                     # End utterance after ~1s silence once the user has spoken.
                     if silence_counter > SILENCE_LIMIT_FRAMES or len(buffer) >= 600:
+                        if speech_frame_count < MIN_UTTERANCE_SPEECH_FRAMES and len(buffer) < 600:
+                            print(
+                                f"[STT Pipeline] False start ignored "
+                                f"(speech_frames={speech_frame_count}, buffer={len(buffer)})"
+                            )
+                            has_spoken = False
+                            speech_notified = False
+                            speech_frame_count = 0
+                            silence_counter = 0
+                            last_countdown = None
+                            buffer.clear()
+                            last_ui_text[0] = ""
+                            _emit_partial("", countdown=0, phase="open")
+                            continue
                         print(f"[STT Pipeline] End of Speech detected ({silence_counter * FRAME_DURATION}ms). Buffer length: {len(buffer)}")
-                        _emit_partial(last_ui_text[0], countdown=0)
+                        _emit_partial(last_ui_text[0], countdown=0, phase="thinking")
                         audio_queue.put({"type": "final", "data": b"".join(buffer)})
                         break
                 else:
@@ -611,6 +728,7 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
                     active_frames = elapsed_frames - CALIBRATION_FRAMES
                     if active_frames > PRE_SPEECH_TIMEOUT_FRAMES:
                         print("[STT Pipeline] Pre-speech timeout — no near-field speech detected.")
+                        _emit_partial("", countdown=0, phase="open")
                         audio_queue.put({"type": "final", "data": b""})
                         break
 
@@ -629,6 +747,15 @@ def listen_stream(partial_cb=None, stop_event=None) -> str:
     worker_thread.join(timeout=1.0)
 
     final_text = final_result[0].strip()
+    # Final duplex guard — if this transcript slipped through, drop it here
+    if final_text and _duplex is not None:
+        try:
+            drop, reason = _duplex.should_drop_transcript(final_text)
+            if drop:
+                print(f"[STT Duplex] Dropped returned transcript ({reason}): {final_text!r}")
+                final_text = ""
+        except Exception:
+            pass
     print(f"[STT Pipeline] Completed: {final_text!r}")
     return final_text
 

@@ -117,7 +117,9 @@ _SYSTEM_RE = re.compile(
 
 def _detect_category(text: str) -> str:
     """Classify into broad category via keyword scan."""
-    if _WHATSAPP_RE.search(text):
+    if _WHATSAPP_RE.search(text) or re.search(r"\b(send|text|message|msg)\b.*?\bto\s+[a-zA-Z]", text, re.I):
+        return "communication"
+    if re.search(r"\b(send|text|message|msg|tell)\b", text, re.I) and _extract_whatsapp_contact(text) is not None:
         return "communication"
     if _NEWS_RE.search(text):
         return "information"
@@ -155,6 +157,49 @@ def _extract_whatsapp_contact(text: str) -> str | None:
         "message", "text", "whatsapp", "saying", "and", "to",
         "send", "msg", "chat", "contact", "that",
     }
+
+    # Pattern 0a: "send <message> to <NAME>" (e.g. "send hi to Satish")
+    m0 = re.search(
+        r"\b(?:send|text|message|msg)\s+.+?\s+to\s+(?P<contact>[a-zA-Z][a-zA-Z ]{0,25}?)(?:\s+(?:on|in)\s+(?:whatsapp|whats\s*app))?\s*$",
+        text, re.I,
+    )
+    if m0:
+        name = m0.group("contact").strip()
+        if name.lower() not in _STOP_WORDS:
+            return name
+
+    # Pattern 0b: "send/text/message/tell <NAME> <message>" where <NAME> is in the phonebook
+    m_direct = re.search(
+        r"\b(?:send|text|message|msg|tell)\s+(?P<contact>[a-zA-Z][a-zA-Z ]{0,20}?)\s+(?P<rest>.+)$",
+        text, re.I,
+    )
+    if m_direct:
+        candidate = m_direct.group("contact").strip()
+        if candidate.lower() not in _STOP_WORDS:
+            try:
+                from executor.whatsapp_phonebook import _find_entry_by_keyword
+                k, entry = _find_entry_by_keyword(candidate)
+                if entry is not None:
+                    return entry.get("display_name", candidate)
+            except Exception:
+                pass
+
+    # Pattern 0c: "search for / find / chat with <NAME> [and send him/her ...]"
+    m_search = re.search(
+        r"\b(?:search\s+for|find|look\s+for|chat\s+with)\s+(?P<contact>[a-zA-Z][a-zA-Z ]{0,20}?)(?:\s+(?:and|to)\s+(?:send|text|message|msg)\b|\s+(?:on|in)\s+(?:whatsapp|whats\s*app)|\s*$)",
+        text, re.I,
+    )
+    if m_search:
+        candidate = m_search.group("contact").strip()
+        if candidate.lower() not in _STOP_WORDS:
+            try:
+                from executor.whatsapp_phonebook import _find_entry_by_keyword
+                k, entry = _find_entry_by_keyword(candidate)
+                if entry is not None:
+                    return entry.get("display_name", candidate)
+            except Exception:
+                pass
+            return candidate
 
     # Pattern 1: "... to <NAME> on/in/via whatsapp ..."
     m = re.search(
@@ -220,6 +265,47 @@ def _extract_whatsapp_contact(text: str) -> str | None:
 
 def _extract_whatsapp_message(text: str) -> str | None:
     """Pull the message body from a WhatsApp command."""
+    # Pattern 0a: "send <msg> to <contact>"
+    m2 = re.search(
+        r'\b(?:send|text|message|msg)\s+["\']?(?P<msg>.+?)["\']?\s+to\s+[a-zA-Z][a-zA-Z ]{0,25}?(?:\s+(?:on|in)\s+(?:whatsapp|whats\s*app))?\s*$',
+        text, re.I,
+    )
+    if m2:
+        return m2.group("msg").strip()
+
+    # Pattern 0b: "send/text/message/tell <NAME> <message>" where <NAME> is in phonebook
+    m_direct = re.search(
+        r"\b(?:send|text|message|msg|tell)\s+(?P<contact>[a-zA-Z][a-zA-Z ]{0,20}?)\s+(?P<rest>.+)$",
+        text, re.I,
+    )
+    if m_direct:
+        candidate = m_direct.group("contact").strip()
+        try:
+            from executor.whatsapp_phonebook import _find_entry_by_keyword
+            k, entry = _find_entry_by_keyword(candidate)
+            if entry is not None:
+                raw_msg = m_direct.group("rest").strip()
+                cleaned = re.sub(
+                    r"^(?:a\s+message\s+(?:saying|that)\s+|a\s+message\s+|saying\s+|that\s+)",
+                    "",
+                    raw_msg,
+                    flags=re.I,
+                ).strip()
+                if cleaned:
+                    return cleaned
+        except Exception:
+            pass
+
+    # Pattern 0c: "... and send him/her <message>"
+    m_send_him = re.search(
+        r"\b(?:send|text|message|msg)\s+(?:him|her|them\s+)?(?:\s*a\s+message\s+(?:saying|that)\s+)?[\"']?(?P<msg>.+?)[\"']?\s*$",
+        text, re.I,
+    )
+    if m_send_him:
+        val = m_send_him.group("msg").strip()
+        if val.lower() not in ("him", "her", "them", "a message", "message", "whatsapp"):
+            return val
+
     # "... saying hello" / "... say hi there" / "... that meet me at 5"
     m = re.search(
         r'\b(?:saying|say|and\s+say)\s+["\']?(?P<msg>.+?)["\']?\s*$',
@@ -417,7 +503,7 @@ def enhance_command(cleaned_input: str) -> EnhancedCommand:
     hints.append(f"category={category}")
 
     # 2. Category-specific enrichment
-    if category == "communication" and _WHATSAPP_RE.search(text):
+    if category == "communication":
         text = _enrich_whatsapp(text, params, hints)
 
     if category == "media":

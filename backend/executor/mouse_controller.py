@@ -55,7 +55,6 @@ APP_SHORTCUTS: dict[str, str] = {
     "explorer": "explorer", "files": "explorer", "file manager": "explorer",
     "task manager": "taskmgr", "settings": "ms-settings:", "control panel": "control",
     "calculator": "calc", "snipping tool": "snippingtool",
-    "youtube": None, "netflix": None,
 }
 
 
@@ -154,6 +153,47 @@ class ComputerController:
                 "saved_path": save_path, "message": "Screenshot captured"}
 
     async def capture_screen_text(self, region: str | tuple | None = None) -> str:
+        if platform.system() == "Darwin":
+            try:
+                def _mac_vision_ocr():
+                    import Quartz
+                    import Vision
+
+                    if isinstance(region, tuple) and len(region) == 4:
+                        x, y, w, h = region
+                        cg_rect = Quartz.CGRectMake(x, y, w, h)
+                    else:
+                        cg_rect = Quartz.CGRectInfinite
+
+                    image_ref = Quartz.CGWindowListCreateImage(
+                        cg_rect,
+                        Quartz.kCGWindowListOptionOnScreenOnly,
+                        Quartz.kCGNullWindowID,
+                        Quartz.kCGWindowImageDefault,
+                    )
+                    if not image_ref:
+                        return ""
+                    req = Vision.VNRecognizeTextRequest.alloc().init()
+                    req.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+                    req.setUsesLanguageCorrection_(True)
+                    handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(image_ref, None)
+                    success = handler.performRequests_error_([req], None)
+                    if not success:
+                        return ""
+                    results = req.results()
+                    lines = []
+                    for obs in results:
+                        top = obs.topCandidates_(1)
+                        if top:
+                            lines.append(top[0].string())
+                    return "\n".join(lines).strip()
+
+                text = await asyncio.to_thread(_mac_vision_ocr)
+                if text:
+                    return text
+            except Exception as e:
+                logger.debug("macOS Vision OCR error: %s", e)
+
         global _ocr_disabled
         if _ocr_disabled:
             return ""
@@ -209,6 +249,12 @@ class ComputerController:
                 buf = ctypes.create_unicode_buffer(length + 1)
                 ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
                 return buf.value or None
+            elif platform.system() == "Darwin":
+                from perception.world import get_world_snapshot
+                snap = get_world_snapshot()
+                if snap.window_title:
+                    return f"{snap.app_display} — {snap.window_title}" if snap.app_display else snap.window_title
+                return snap.app_display or None
             else:
                 proc = await asyncio.create_subprocess_exec("xdotool", "getactivewindow", "getwindowname",
                                                             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
@@ -259,9 +305,24 @@ class ComputerController:
             return {"status": "failed", "error": str(e)}
 
     async def close_window(self, app_name: str) -> dict:
-        await self.focus_window(app_name)
-        await asyncio.sleep(0.3)
-        return await self.keyboard_hotkey("alt", "f4")
+        if platform.system() == "Darwin":
+            if app_name and app_name.lower() not in ("window", "this", "active", "it", "all", "all tabs"):
+                clean_app = app_name.strip()
+                script = f'tell application "{clean_app}" to quit'
+                res = await asyncio.to_thread(subprocess.run, ["osascript", "-e", script], capture_output=True, text=True)
+                if res.returncode == 0:
+                    return {"status": "success", "message": f"Closed {clean_app}"}
+            if "tab" in (app_name or "").lower():
+                return await self.keyboard_hotkey("cmd", "option", "w")
+            return await self.keyboard_hotkey("cmd", "w")
+        elif platform.system() == "Windows":
+            await self.focus_window(app_name)
+            await asyncio.sleep(0.3)
+            return await self.keyboard_hotkey("alt", "f4")
+        else:
+            await self.focus_window(app_name)
+            await asyncio.sleep(0.3)
+            return await self.keyboard_hotkey("ctrl", "q")
 
     async def clipboard_copy(self, text: str | None = None) -> dict:
         if text:
@@ -279,18 +340,17 @@ class ComputerController:
             return ""
 
     async def open_app(self, app_name: str) -> dict:
-        name = app_name.lower().strip()
-        cmd = APP_SHORTCUTS.get(name)
-        if cmd is None and name in APP_SHORTCUTS:
-            return await self._open_url_app(name)
-        if cmd is None:
-            cmd = name
-        return await self._launch_process(cmd, app_name)
+        from executor.open_app import open_app as launch_app
+
+        ok, msg = await asyncio.to_thread(launch_app, app_name)
+        if ok:
+            return {"status": "success", "message": msg}
+        return {"status": "failed", "error": msg}
 
     async def _open_url_app(self, name: str) -> dict:
-        urls = {"youtube": "https://youtube.com", "netflix": "https://netflix.com",
-                "gmail": "https://mail.google.com", "maps": "https://maps.google.com"}
-        url = urls.get(name)
+        from executor.open_app import WEB_APP_URLS, _normalize_app_name
+
+        url = WEB_APP_URLS.get(_normalize_app_name(name))
         if url:
             import webbrowser
             await asyncio.to_thread(webbrowser.open, url)
@@ -312,7 +372,7 @@ class ComputerController:
         except asyncio.TimeoutError:
             return {"status": "success", "message": f"Launched {display_name}"}
         except FileNotFoundError:
-            return {"status": "failed", "error": f"'{cmd}' not found on PATH"}
+            return {"status": "failed", "error": f"I couldn't find {display_name}."}
         except Exception as e:
             return {"status": "failed", "error": str(e)}
 

@@ -22,7 +22,8 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { BACKEND_URL } from "@/lib/api";
+
+const BACKEND = "http://127.0.0.1:8000";
 
 interface Settings {
   autoWake: boolean;
@@ -57,7 +58,7 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    fetch(`${BACKEND_URL}/settings`)
+    fetch(`${BACKEND}/settings`)
       .then((r) => r.json())
       .then((data) => {
         setSettings({ ...DEFAULTS, ...data });
@@ -87,7 +88,7 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
         try {
-          await fetch(`${BACKEND_URL}/settings`, {
+          await fetch(`${BACKEND}/settings`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(next),
@@ -123,7 +124,7 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
               )}
             </div>
             <SheetDescription className="text-zinc-500 dark:text-zinc-400 font-inter">
-              Configure F.R.I.D.A.Y parameters and interface preferences.
+              Configure F.R.I.D.A.Y. parameters and interface preferences.
             </SheetDescription>
           </SheetHeader>
 
@@ -189,7 +190,7 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
                     onValueCommitted={(v) => persist({ volume: Array.isArray(v) ? v[0] : v })}
                     max={100}
                     step={1}
-                    className="**:[[role=slider]]:bg-primary **:[[role=slider]]:border-primary"
+                    className="[&_[role=slider]]:bg-primary [&_[role=slider]]:border-primary"
                   />
                 </div>
                 <div className="space-y-4">

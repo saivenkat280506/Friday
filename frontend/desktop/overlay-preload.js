@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld("fridayOverlay", {
   shutdownFriday() {
     ipcRenderer.send("shutdown-friday");
   },
+  dismissCompanion() {
+    ipcRenderer.send("dismiss-companion");
+  },
   setOverlayHeight(height) {
     ipcRenderer.send("overlay-resize", { height: Math.round(height) });
   },

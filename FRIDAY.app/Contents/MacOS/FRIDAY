@@ -1,0 +1,10 @@
+#!/bin/zsh
+set -u
+ROOT="/Users/saivenkat/Projects/Friday"
+cd "$ROOT" || exit 1
+chmod +x "$ROOT/scripts/friday-launcher.sh" 2>/dev/null || true
+mkdir -p "$ROOT/logs"
+if [[ -x /usr/bin/arch ]]; then
+  exec /usr/bin/arch -arm64 /bin/bash "$ROOT/scripts/friday-launcher.sh" --start >>"$ROOT/logs/launcher.log" 2>&1
+fi
+exec /bin/bash "$ROOT/scripts/friday-launcher.sh" --start >>"$ROOT/logs/launcher.log" 2>&1
