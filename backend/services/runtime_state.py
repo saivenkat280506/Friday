@@ -64,11 +64,16 @@ class RuntimeFlags:
     last_request_time: float = 0.0
     last_response_time: float = 0.0
     last_user_input: str = ""
+    last_assistant_response: str = ""
+    last_intent: str = ""
+    shutdown_requested: bool = False
+    voice_session_active: bool = False
     processed_ids: set[str] = field(default_factory=set)
     session_registry: dict[str, str] = field(default_factory=dict)
     backend_ready: bool = False
     stt_ready: bool = False
     stt_provider: str = "local"
+    presence_mode: str = "resident"  # resident | quiet | sleep  (mirrors PresenceMode enum)
 
 
 flags = RuntimeFlags()

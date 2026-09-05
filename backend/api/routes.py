@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from brain.friday_graph import run_pipeline
 from brain.memory import MEMORY_FILE, _lock
 from brain.memory_manager import MemoryManager
+from config import settings
 
 from services.command_processor import process_command, process_command_with_timeout
 from services.event_bus import BusEvent, event_bus
@@ -57,8 +58,8 @@ class VisionPayload(BaseModel):
 class PipelineRunRequest(BaseModel):
     text: str
     session_id: str = "default"
-    llm_provider: str = "groq"
-    llm_model: str = "llama-3.1-8b-instant"
+    llm_provider: str = ""
+    llm_model: str = ""
 
 
 class PipelineRunResponse(BaseModel):
@@ -102,6 +103,8 @@ def register_routes(app: FastAPI) -> None:
             "companion_mode": flags.companion_mode,
             "companion_collapsed": flags.companion_surface_collapsed,
             "stt_provider": flags.stt_provider,
+            "llm_provider": settings.LLM_PROVIDER,
+            "llm_model": settings.LLM_MODEL,
             "tts_active": is_tts_active(),
         }
 
@@ -127,7 +130,6 @@ def register_routes(app: FastAPI) -> None:
 
     @app.post("/chat")
     async def chat_endpoint(payload: dict):
-        flags.continuous_voice_mode = False
         from tts.pocket_tts import stop_speech
 
         stop_speech()
@@ -694,8 +696,8 @@ def register_routes(app: FastAPI) -> None:
         state = await run_pipeline(
             raw_input=req.text,
             session_id=req.session_id,
-            llm_provider=req.llm_provider,
-            llm_model=req.llm_model,
+            llm_provider=req.llm_provider or settings.LLM_PROVIDER,
+            llm_model=req.llm_model or settings.LLM_MODEL,
         )
         elapsed = (time.perf_counter() - t0) * 1000
         return PipelineRunResponse(
@@ -716,7 +718,7 @@ def register_routes(app: FastAPI) -> None:
         browser_ok = await is_browser_agent_available()
         return {
             "status": "ok",
-            "llm_provider": "groq",
+            "llm_provider": settings.LLM_PROVIDER,
             "browser_agent_online": browser_ok,
             "active_sessions": 0,
         }
@@ -750,8 +752,8 @@ def register_routes(app: FastAPI) -> None:
                     state = await run_pipeline(
                         raw_input=text,
                         session_id=session_id,
-                        llm_provider=msg.get("llm_provider", "groq"),
-                        llm_model=msg.get("llm_model", "llama-3.1-8b-instant"),
+                        llm_provider=msg.get("llm_provider") or settings.LLM_PROVIDER,
+                        llm_model=msg.get("llm_model") or settings.LLM_MODEL,
                     )
                     await websocket.send_json({
                         "type": "RESPONSE",

@@ -32,10 +32,71 @@ _watchdog_thread: Optional[threading.Thread] = None
 _hotkey_watchdog_stop = threading.Event()
 _hotkey_watchdog_thread: Optional[threading.Thread] = None
 
+_macos_tap = None
+_macos_run_loop = None
+_macos_thread: Optional[threading.Thread] = None
+
+
+def _start_macos_modifier_listener() -> bool:
+    """Listen for Control+Option modifier chord on macOS via Quartz CGEventTap."""
+    global _macos_thread
+    try:
+        import Quartz
+
+        def _run():
+            global _macos_tap, _macos_run_loop
+            last_flags = 0
+
+            def callback(proxy, event_type, event, refcon):
+                nonlocal last_flags
+                if event_type == Quartz.kCGEventFlagsChanged:
+                    flags = Quartz.CGEventGetFlags(event)
+                    ctrl = bool(flags & Quartz.kCGEventFlagMaskControl)
+                    alt = bool(flags & Quartz.kCGEventFlagMaskAlternate)
+                    prev_ctrl = bool(last_flags & Quartz.kCGEventFlagMaskControl)
+                    prev_alt = bool(last_flags & Quartz.kCGEventFlagMaskAlternate)
+                    last_flags = flags
+
+                    # Leading edge: trigger when both Control and Option become pressed
+                    if ctrl and alt and not (prev_ctrl and prev_alt):
+                        logger.info("Control+Option detected via macOS Quartz hook")
+                        _on_companion_hotkey("macos-control-option")
+                return event
+
+            tap = Quartz.CGEventTapCreate(
+                Quartz.kCGSessionEventTap,
+                Quartz.kCGHeadInsertEventTap,
+                Quartz.kCGEventTapOptionListenOnly,
+                Quartz.CGEventMaskBit(Quartz.kCGEventFlagsChanged),
+                callback,
+                None,
+            )
+            if not tap:
+                logger.warning("Quartz CGEventTapCreate returned None (check Accessibility permissions)")
+                return
+
+            _macos_tap = tap
+            source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
+            _macos_run_loop = Quartz.CFRunLoopGetCurrent()
+            Quartz.CFRunLoopAddSource(_macos_run_loop, source, Quartz.kCFRunLoopCommonModes)
+            Quartz.CGEventTapEnable(tap, True)
+            Quartz.CFRunLoopRun()
+
+        _macos_thread = threading.Thread(
+            target=_run, daemon=True, name="macos_control_option_listener"
+        )
+        _macos_thread.start()
+        return True
+    except Exception as exc:
+        logger.warning("Failed to start macOS modifier listener: %s", exc)
+        return False
+
 
 def companion_hotkey_label() -> str:
-    """Human/Electron-style accelerator (e.g. Alt+Space)."""
-    return os.getenv("COMPANION_HOTKEY", "Alt+Space").strip() or "Alt+Space"
+    """Human/Electron-style accelerator (e.g. Control+Option or Alt+Space)."""
+    import sys
+    default = "Control+Option" if sys.platform == "darwin" else "Alt+Space"
+    return os.getenv("COMPANION_HOTKEY", default).strip() or default
 
 
 def companion_hotkey_fallback_label() -> str:
@@ -621,8 +682,15 @@ def _stop_hotkey_watchdog() -> None:
 
 async def start_companion_hotkey(loop: asyncio.AbstractEventLoop) -> None:
     bind_loop(loop)
+    import sys
+
+    if sys.platform == "darwin":
+        if _start_macos_modifier_listener():
+            logger.info("Companion hotkey service ready (Control+Option via macOS Quartz)")
+        return
+
     if os.name != "nt":
-        logger.info("Companion hotkey service skipped (Windows only)")
+        logger.info("Companion hotkey service skipped (non-Windows/macOS)")
         return
 
     # Do not hook or kill ASUS hotkey services — that breaks volume/brightness/Fn keys.
@@ -656,6 +724,17 @@ def refresh_companion_hotkey() -> bool:
 
 
 def stop_companion_hotkey() -> None:
+    global _macos_tap, _macos_run_loop
+    if _macos_tap and _macos_run_loop:
+        try:
+            import Quartz
+
+            Quartz.CGEventTapEnable(_macos_tap, False)
+            Quartz.CFRunLoopStop(_macos_run_loop)
+        except Exception:
+            pass
+        _macos_tap = None
+        _macos_run_loop = None
     _stop_hotkey_watchdog()
     _stop_myasus_watchdog()
     _unregister_keyboard_hook()

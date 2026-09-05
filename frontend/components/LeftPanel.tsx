@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { Orb, AgentState } from "@/components/ui/orb";
 import { Waveform } from "@/components/ui/waveform";
-import { Mic, MicOff, Settings2, ShieldCheck, Zap } from "lucide-react";
+import { Mic, MicOff, Settings2, ShieldCheck, WifiOff, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface LeftPanelProps {
   agentState: AgentState;
   isListening: boolean;
+  isBackendOnline?: boolean;
   toggleMic: () => void;
   speechTranscript: string;
   onSettingsClick: () => void;
@@ -17,7 +18,8 @@ interface LeftPanelProps {
 
 export default function LeftPanel({ 
   agentState, 
-  isListening, 
+  isListening,
+  isBackendOnline = true,
   toggleMic,
   speechTranscript,
   onSettingsClick
@@ -32,22 +34,51 @@ export default function LeftPanel({
     return () => observer.disconnect();
   }, []);
 
-  // Dynamic waveform data based on state
-  const waveformData = agentState !== "idle" 
+  const isOffline = agentState === "offline" || !isBackendOnline;
+  const isActive = !isOffline && agentState !== "idle";
+
+  const waveformData = isActive
     ? Array.from({ length: 40 }, () => {
         const base = agentState === "talking" ? 0.6 : 0.3;
         const variance = agentState === "talking" ? 0.4 : 0.2;
         return Math.random() * variance + base;
-      }) 
+      })
     : [];
+
+  const statusLabel = isOffline
+    ? "Backend Offline"
+    : agentState === "idle_listening"
+    ? "Voice Call Active"
+    : "System Active";
+
+  const statusDot = isOffline ? "bg-red-500" : "bg-emerald-500 animate-pulse";
+
+  const subtitle = isOffline
+    ? "Backend unreachable — start Friday backend"
+    : isListening
+    ? "Listening to your request..."
+    : agentState === "idle_listening"
+    ? "On call — speak your next command"
+    : agentState === "talking"
+    ? "Speaking..."
+    : agentState === "thinking"
+    ? "Processing..."
+    : agentState === "transcribing"
+    ? "Transcribing..."
+    : "Click to start voice call";
 
   return (
     <aside className="w-[320px] glass rounded-3xl flex flex-col h-full shadow-sm overflow-hidden p-6 gap-8">
       {/* HEADER SECTION */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[11px] font-bold tracking-widest text-muted-foreground uppercase">System Active</span>
+          <div className={cn("w-2 h-2 rounded-full", statusDot)} />
+          <span className={cn(
+            "text-[11px] font-bold tracking-widest uppercase",
+            isOffline ? "text-red-500/80" : "text-muted-foreground"
+          )}>
+            {statusLabel}
+          </span>
         </div>
         <Button variant="ghost" size="icon" onClick={onSettingsClick} className="rounded-full hover:bg-white/50 dark:hover:bg-zinc-800/50">
           <Settings2 className="w-4 h-4 text-muted-foreground" />
@@ -71,9 +102,12 @@ export default function LeftPanel({
         </div>
 
         <div className="text-center space-y-1">
-          <h2 className="text-xl font-medium tracking-tight">F.R.I.D.A.Y</h2>
-          <p className="text-xs text-muted-foreground font-inter italic px-4">
-            {isListening ? "Listening to your request..." : "Click to wake Friday"}
+          <h2 className="text-xl font-medium tracking-tight">F.R.I.D.A.Y.</h2>
+          <p className={cn(
+            "text-xs font-inter italic px-4",
+            isOffline ? "text-red-500/70" : "text-muted-foreground"
+          )}>
+            {subtitle}
           </p>
         </div>
 
@@ -112,21 +146,26 @@ export default function LeftPanel({
         {(() => {
           const stateConfig = {
             idle: { label: "Voice Mode", color: "bg-primary hover:bg-zinc-800", icon: Mic },
+            idle_listening: { label: "On Call", color: "bg-emerald-600 hover:bg-emerald-700", icon: Mic },
             listening: { label: "Listening", color: "bg-emerald-500 hover:bg-emerald-600 animate-pulse", icon: Mic },
             transcribing: { label: "Transcribing", color: "bg-purple-500 hover:bg-purple-600", icon: Zap },
             thinking: { label: "Thinking", color: "bg-amber-500 hover:bg-amber-600 animate-pulse", icon: Settings2 },
             talking: { label: "Speaking", color: "bg-blue-500 hover:bg-blue-600", icon: Mic },
+            offline: { label: "Backend Offline", color: "bg-red-500/80 hover:bg-red-600/80", icon: WifiOff },
           };
           const config = stateConfig[agentState as keyof typeof stateConfig] || stateConfig.idle;
-          const Icon = agentState !== "idle" ? MicOff : config.icon;
-          const label = agentState !== "idle" ? config.label : "Voice Mode";
+          const inSession = agentState !== "idle" && agentState !== "offline";
+          const Icon = inSession ? MicOff : config.icon;
+          const label = agentState === "idle" ? "Voice Mode" : config.label;
 
           return (
             <Button 
               onClick={toggleMic}
+              disabled={isOffline}
               className={cn(
                 "w-full h-14 rounded-2xl transition-all duration-500 gap-3 border-none shadow-md text-primary-foreground font-medium",
-                agentState !== "idle" ? config.color : "bg-primary hover:bg-zinc-800 dark:hover:bg-zinc-700"
+                inSession || isOffline ? config.color : "bg-primary hover:bg-zinc-800 dark:hover:bg-zinc-700",
+                isOffline && "opacity-80 cursor-not-allowed"
               )}
             >
               <Icon className={cn("w-5 h-5", agentState === "listening" && "animate-pulse")} />

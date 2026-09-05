@@ -1,20 +1,76 @@
-const { app, BrowserWindow, dialog, ipcMain, globalShortcut } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, globalShortcut, nativeImage } = require("electron");
 const path = require("path");
 const { spawn, exec } = require("child_process");
 const http = require("http");
 const net = require("net");
 const fs = require("fs");
 
+function ignoreStreamError(stream) {
+  if (stream && typeof stream.on === "function") {
+    stream.on("error", (err) => {
+      if (err && (err.code === "EPIPE" || err.code === "ERR_STREAM_DESTROYED")) {
+        return;
+      }
+    });
+  }
+}
+ignoreStreamError(process.stdout);
+ignoreStreamError(process.stderr);
+
+process.on("uncaughtException", (err) => {
+  if (err && (err.code === "EPIPE" || err.message?.includes("write EPIPE"))) {
+    return;
+  }
+  try {
+    logToFile(`Uncaught exception: ${err?.stack || err}`, true);
+  } catch {
+    // Ignore logging failures during fatal crash
+  }
+});
+
+process.on("unhandledRejection", (reason) => {
+  try {
+    logToFile(`Unhandled rejection: ${reason?.stack || reason}`, true);
+  } catch {
+    // Ignore logging failures
+  }
+});
+
 const PROJECT_ROOT = path.join(__dirname, "../..");
 const BACKEND_DIR = path.join(PROJECT_ROOT, "backend");
 const FRONTEND_DIR = path.join(PROJECT_ROOT, "frontend");
+
+if (process.platform === "darwin") {
+  const currentPath = process.env.PATH || "";
+  const extraPaths = ["/opt/homebrew/bin", "/usr/local/bin"];
+  const needed = extraPaths.filter((p) => !currentPath.split(":").includes(p));
+  if (needed.length > 0) {
+    process.env.PATH = `${needed.join(":")}:${currentPath}`;
+  }
+}
+
+app.setName("F.R.I.D.A.Y.");
+
+function fridayIconPath() {
+  const icns = path.join(PROJECT_ROOT, "friday_icon.icns");
+  const jpg = path.join(PROJECT_ROOT, "FRIDAY.jpg");
+  const jpgLower = path.join(PROJECT_ROOT, "friday.jpg");
+  if (fs.existsSync(icns)) return icns;
+  if (fs.existsSync(jpg)) return jpg;
+  if (fs.existsSync(jpgLower)) return jpgLower;
+  return null;
+}
 const BACKEND_PORT = 8000;
 const WEB_PORT = 3000;
 const WEB_URL = `http://127.0.0.1:${WEB_PORT}`;
+const OLLAMA_PORT = 11434;
+const OLLAMA_URL = `http://127.0.0.1:${OLLAMA_PORT}`;
 
 let mainWindow;
 let pythonProcess;
 let webProcess;
+let ollamaProcess;
+let ollamaStartedByFriday = false;
 let overlayWindow;
 let overlayVisible = false;
 let overlayReady = false;
@@ -26,19 +82,20 @@ let lastLocalHotkeyAt = 0;
 let backendMissCount = 0;
 let backendRecoveryInFlight = false;
 const HOTKEY_DEBOUNCE_MS = 750;
-// Alt+Space is the Windows window menu — Electron cannot register it; backend hook handles it.
 // Override via COMPANION_HOTKEY / COMPANION_HOTKEY_FALLBACK env vars.
 const COMPANION_HOTKEY =
-  process.env.COMPANION_HOTKEY || "Alt+Space";
+  process.env.COMPANION_HOTKEY ||
+  (process.platform === "darwin" ? "Control+Option+Space" : "Alt+Space");
 const COMPANION_HOTKEY_FALLBACK =
   process.env.COMPANION_HOTKEY_FALLBACK || "Ctrl+Alt+F";
 let registeredCompanionHotkeys = [];
 // Alt+Space is the Windows window-menu combo. Electron's globalShortcut may
-// report success but still cannot deliver it — and RegisterHotKey then fails
-// for the Python backend (error 1409). Never register it in Electron.
-const electronUnsupportedHotkeys = new Set(["Alt+Space", "alt+space"]);
+// report success but still cannot deliver it on Windows.
+const electronUnsupportedHotkeys = new Set(
+  process.platform === "win32" ? ["Alt+Space", "alt+space"] : []
+);
 
-const OVERLAY_WIDTH = 272;
+const OVERLAY_WIDTH = 280;
 const OVERLAY_WIDTH_WIDE = 420;
 const OVERLAY_HEIGHT = 188;
 const OVERLAY_HEIGHT_MUSIC = 232;
@@ -284,36 +341,53 @@ async function syncCompanionFromBackend() {
 
 function startHotkeyPoll() {
   clearInterval(hotkeyPollTimer);
+  let hotkeyPollInFlight = false;
   hotkeyPollTimer = setInterval(async () => {
-    const signal = await fetchHotkeySignal();
-    if (!signal || typeof signal.seq !== "number") {
-      backendMissCount += 1;
-      if (backendMissCount >= 3) {
-        await ensureBackendRunning();
+    if (hotkeyPollInFlight) return;
+    hotkeyPollInFlight = true;
+    try {
+      const signal = await fetchHotkeySignal();
+      if (!signal || typeof signal.seq !== "number") {
+        backendMissCount += 1;
+        if (backendMissCount >= 3) {
+          await ensureBackendRunning();
+        }
+        return;
       }
-      return;
-    }
-    backendMissCount = 0;
-    if (signal.seq > lastHotkeySeq) {
-      lastHotkeySeq = signal.seq;
-      applyCompanionHotkeyAction(signal.action, "backend-hotkey");
+      backendMissCount = 0;
+      if (signal.seq > lastHotkeySeq) {
+        lastHotkeySeq = signal.seq;
+        applyCompanionHotkeyAction(signal.action, "backend-hotkey");
+      }
+    } finally {
+      hotkeyPollInFlight = false;
     }
   }, 400);
 }
 
 function companionHotkeyCombos() {
-  const combos = [COMPANION_HOTKEY];
+  const combos = [
+    COMPANION_HOTKEY,
+    "Control+Option+Space",
+    "Control+Alt+Space",
+    "Ctrl+Alt+Space",
+    "Control+Option+F",
+    "Ctrl+Alt+F",
+  ];
   if (
     COMPANION_HOTKEY_FALLBACK &&
-    COMPANION_HOTKEY_FALLBACK !== COMPANION_HOTKEY
+    !combos.includes(COMPANION_HOTKEY_FALLBACK)
   ) {
     combos.push(COMPANION_HOTKEY_FALLBACK);
   }
-  return combos;
+  return Array.from(new Set(combos.filter(Boolean)));
 }
 
 function isElectronBlockedHotkey(combo) {
-  return combo.replace(/\s+/g, "").toLowerCase() === "alt+space";
+  if (process.platform === "win32") {
+    return combo.replace(/\s+/g, "").toLowerCase() === "alt+space";
+  }
+  return false;
 }
 
 function registerCompanionHotkey() {
@@ -394,7 +468,239 @@ function unregisterCompanionHotkey() {
   }
 }
 
+function readBackendEnv() {
+  const envPath = path.join(BACKEND_DIR, ".env");
+  const parsed = {};
+  try {
+    for (const raw of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+      const eq = line.indexOf("=");
+      if (eq < 1) continue;
+      parsed[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+    }
+  } catch {
+    // Missing .env is fine — fall back to process.env
+  }
+  return parsed;
+}
+
+function shouldManageOllama() {
+  const env = readBackendEnv();
+  const provider = (
+    process.env.LLM_PROVIDER ||
+    env.LLM_PROVIDER ||
+    ""
+  ).toLowerCase();
+  return provider === "ollama";
+}
+
+function resolveOllamaBin() {
+  const env = readBackendEnv();
+  const candidates = [
+    process.env.OLLAMA_BIN,
+    env.OLLAMA_BIN,
+    "/usr/local/bin/ollama",
+    "/opt/homebrew/bin/ollama",
+    "/usr/bin/ollama",
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return "ollama";
+}
+
+function runShell(command, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    exec(command, { timeout: timeoutMs }, () => resolve());
+  });
+}
+
+function checkOllamaHealth() {
+  return new Promise((resolve) => {
+    const req = http.get(`${OLLAMA_URL}/api/tags`, (res) => {
+      res.resume();
+      resolve(res.statusCode === 200);
+    });
+    req.on("error", () => resolve(false));
+    req.setTimeout(2000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function waitForOllama(maxMs = 30000) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const poll = setInterval(async () => {
+      if (await checkOllamaHealth()) {
+        clearInterval(poll);
+        resolve(true);
+        return;
+      }
+      if (Date.now() - started >= maxMs) {
+        clearInterval(poll);
+        resolve(false);
+      }
+    }, 400);
+  });
+}
+
+function killListenersOnPort(port) {
+  return new Promise((resolve) => {
+    if (process.platform === "win32") {
+      exec(`netstat -ano | findstr :${port}`, (err, stdout) => {
+        if (err || !stdout) {
+          resolve(false);
+          return;
+        }
+        const pids = new Set();
+        for (const line of stdout.split(/\r?\n/)) {
+          if (!line.includes("LISTENING")) continue;
+          const parts = line.trim().split(/\s+/);
+          const pid = Number.parseInt(parts[parts.length - 1], 10);
+          if (Number.isFinite(pid) && pid > 0) pids.add(pid);
+        }
+        if (!pids.size) {
+          resolve(false);
+          return;
+        }
+        exec([...pids].map((pid) => `taskkill /PID ${pid} /F`).join(" & "), () =>
+          resolve(true)
+        );
+      });
+      return;
+    }
+    exec(
+      `lsof -nP -iTCP:${port} -sTCP:LISTEN -t`,
+      (err, stdout) => {
+        const pids = String(stdout || "")
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+        if (err || !pids.length) {
+          resolve(false);
+          return;
+        }
+        exec(`kill -TERM ${pids.join(" ")}`, () => {
+          setTimeout(() => {
+            exec(`kill -9 ${pids.join(" ")}`, () => resolve(true));
+          }, 400);
+        });
+      }
+    );
+  });
+}
+
+async function startOllama() {
+  if (!shouldManageOllama()) {
+    logToFile("LLM_PROVIDER is not ollama — leaving Ollama unmanaged");
+    return;
+  }
+  if (await checkOllamaHealth()) {
+    logToFile("Ollama already running on port 11434");
+    return;
+  }
+
+  const bin = resolveOllamaBin();
+  logToFile(`Starting Ollama: ${bin} serve`);
+  try {
+    ollamaProcess = spawn(bin, ["serve"], {
+      cwd: PROJECT_ROOT,
+      env: {
+        ...process.env,
+        OLLAMA_HOST: "127.0.0.1:11434",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    ollamaStartedByFriday = true;
+    ollamaProcess.stdout.on("data", (data) => logToFile(`[Ollama] ${data}`));
+    ollamaProcess.stderr.on("data", (data) => logToFile(`[Ollama] ${data}`));
+    ollamaProcess.on("exit", (code) => {
+      logToFile(`Ollama serve exited with code ${code}`);
+      ollamaProcess = null;
+    });
+  } catch (err) {
+    logToFile(`Failed to spawn ollama serve: ${err}`, true);
+  }
+
+  if (await waitForOllama(20000)) {
+    logToFile("Ollama ready on port 11434");
+    return;
+  }
+
+  if (process.platform === "darwin") {
+    logToFile("ollama serve not ready — opening Ollama.app");
+    await runShell('open -a Ollama');
+    ollamaStartedByFriday = true;
+    if (await waitForOllama(20000)) {
+      logToFile("Ollama.app is online");
+      return;
+    }
+  }
+
+  throw new Error(
+    "Ollama did not start on port 11434.\n\nInstall Ollama, or run: ollama serve"
+  );
+}
+
+async function stopOllama() {
+  if (!shouldManageOllama() && !ollamaProcess && !ollamaStartedByFriday) {
+    return;
+  }
+  const env = readBackendEnv();
+  const model = process.env.OLLAMA_MODEL || env.OLLAMA_MODEL || "qwen3.5:4b";
+  const bin = resolveOllamaBin();
+  logToFile(`Stopping Ollama (model ${model} + server)`);
+
+  await runShell(`"${bin}" stop "${model}"`, 10000);
+
+  if (ollamaProcess && !ollamaProcess.killed) {
+    const pid = ollamaProcess.pid;
+    ollamaProcess = null;
+    if (process.platform === "win32" && pid) {
+      await runShell(`taskkill /PID ${pid} /T /F`);
+    } else if (pid) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        /* ignore */
+      }
+      await new Promise((r) => setTimeout(r, 400));
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  await killListenersOnPort(OLLAMA_PORT);
+
+  if (process.platform === "darwin") {
+    await runShell(`osascript -e 'tell application "Ollama" to quit'`);
+    await runShell("killall Ollama ollama");
+  } else if (process.platform === "win32") {
+    await runShell("taskkill /IM ollama.exe /F");
+  } else {
+    await runShell("pkill -f ollama");
+  }
+
+  ollamaStartedByFriday = false;
+  logToFile("Ollama stopped");
+}
+
 function logToFile(msg, isError = false) {
+  try {
+    if (isError) {
+      console.error(`[Electron Error] ${msg}`);
+    } else {
+      console.log(`[Electron] ${msg}`);
+    }
+  } catch {
+    // Ignore broken pipe or console write failure
+  }
   try {
     const logPath = path.join(
       app.getPath("userData"),
@@ -408,31 +714,7 @@ function logToFile(msg, isError = false) {
 }
 
 function killStaleBackendOnPort(port) {
-  return new Promise((resolve) => {
-    if (process.platform !== "win32") {
-      resolve(false);
-      return;
-    }
-    exec(`netstat -ano | findstr :${port}`, (err, stdout) => {
-      if (err || !stdout) {
-        resolve(false);
-        return;
-      }
-      const pids = new Set();
-      for (const line of stdout.split(/\r?\n/)) {
-        if (!line.includes("LISTENING")) continue;
-        const parts = line.trim().split(/\s+/);
-        const pid = Number.parseInt(parts[parts.length - 1], 10);
-        if (Number.isFinite(pid) && pid > 0) pids.add(pid);
-      }
-      if (!pids.size) {
-        resolve(false);
-        return;
-      }
-      const cmd = [...pids].map((pid) => `taskkill /PID ${pid} /F`).join(" & ");
-      exec(cmd, () => resolve(true));
-    });
-  });
+  return killListenersOnPort(port);
 }
 
 function isPortInUse(port) {
@@ -558,6 +840,14 @@ function startFrontend() {
         return;
       }
 
+      if (await isPortInUse(WEB_PORT)) {
+        logToFile(
+          `Port ${WEB_PORT} in use by an unreachable or stale process — clearing...`,
+          true
+        );
+        await killListenersOnPort(WEB_PORT);
+      }
+
       const buildIdPath = path.join(FRONTEND_DIR, ".next", "BUILD_ID");
       const useProduction =
         process.env.FRIDAY_WEB_MODE === "production" &&
@@ -631,13 +921,18 @@ function startBackend() {
         await new Promise((r) => setTimeout(r, 1500));
       }
 
-      const pythonPath = path.join(BACKEND_DIR, ".venv", "Scripts", "python.exe");
+      const pythonPath = process.platform === "win32"
+        ? path.join(BACKEND_DIR, ".venv", "Scripts", "python.exe")
+        : path.join(BACKEND_DIR, ".venv", "bin", "python");
       const scriptPath = path.join(BACKEND_DIR, "main.py");
 
       if (!fs.existsSync(pythonPath)) {
+        const hint = process.platform === "win32"
+          ? "cd backend && python -m venv .venv && .venv\\Scripts\\pip install -r requirements.txt"
+          : "cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt";
         return reject(
           new Error(
-            `Python virtual environment not found.\n\nExpected:\n${pythonPath}\n\nRun: cd backend && python -m venv .venv && .venv\\Scripts\\pip install -r requirements.txt`
+            `Python virtual environment not found.\n\nExpected:\n${pythonPath}\n\nRun: ${hint}`
           )
         );
       }
@@ -686,17 +981,8 @@ function startBackend() {
   });
 }
 
-async function createWindow() {
-  try {
-    await startBackend();
-    await startFrontend();
-  } catch (err) {
-    dialog.showErrorBox("FRIDAY Startup Failure", err.message);
-    app.quit();
-    return;
-  }
-
-  const iconPath = path.join(PROJECT_ROOT, "friday_icon.png");
+function createMainWindowInstance() {
+  const iconPath = fridayIconPath();
 
   mainWindow = new BrowserWindow({
     width: 1300,
@@ -705,7 +991,7 @@ async function createWindow() {
     minHeight: 650,
     autoHideMenuBar: true,
     title: "F.R.I.D.A.Y.",
-    icon: fs.existsSync(iconPath) ? iconPath : undefined,
+    icon: iconPath || undefined,
     show: false,
     webPreferences: {
       nodeIntegration: false,
@@ -743,10 +1029,16 @@ async function createWindow() {
       mainWindow.focus();
       return;
     }
-    // Main app stays hidden until the user opens it from the companion gear button.
   });
 
   mainWindow.on("close", async (event) => {
+    if (process.env.FRIDAY_OPEN_MAIN === "1") {
+      if (!app.isQuitting) {
+        event.preventDefault();
+        await shutdownFridayApp();
+      }
+      return;
+    }
     if (!app.isQuitting) {
       event.preventDefault();
       await stopVoiceAndTts();
@@ -758,10 +1050,28 @@ async function createWindow() {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+
+  return mainWindow;
+}
+
+async function createWindow() {
+  try {
+    await startOllama();
+    await startBackend();
+    await startFrontend();
+  } catch (err) {
+    dialog.showErrorBox("FRIDAY Startup Failure", err.message);
+    app.quit();
+    return;
+  }
+
+  createMainWindowInstance();
 }
 
 async function openMainApp() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindowInstance();
+  }
   try {
     await startFrontend();
     const currentUrl = mainWindow.webContents.getURL();
@@ -889,6 +1199,7 @@ async function shutdownFridayApp() {
   await killWebProcessTree();
   await killStaleBackendOnPort(BACKEND_PORT);
   await killStaleBackendOnPort(WEB_PORT);
+  await stopOllama();
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.destroy();
@@ -906,6 +1217,12 @@ ipcMain.on("shutdown-friday", () => {
   shutdownFridayApp().catch((err) => {
     logToFile(`Shutdown failed: ${err}`, true);
     app.exit(1);
+  });
+});
+
+ipcMain.on("dismiss-companion", () => {
+  dismissCompanionFromHotkey("overlay-capsule").catch((err) => {
+    logToFile(`Dismiss companion error: ${err}`, true);
   });
 });
 
@@ -929,6 +1246,30 @@ ipcMain.on("overlay-resize", (_event, payload) => {
   overlayWindow.setBounds({ x, y, width: overlayWidth, height: nextHeight });
 });
 
+function cleanupStaleSingletonLock() {
+  try {
+    const userData = app.getPath("userData");
+    const lockPath = path.join(userData, "SingletonLock");
+    if (fs.existsSync(lockPath) || fs.lstatSync(lockPath).isSymbolicLink()) {
+      const target = fs.readlinkSync(lockPath);
+      const match = target.match(/-(\d+)$/);
+      if (match) {
+        const pid = parseInt(match[1], 10);
+        try {
+          process.kill(pid, 0);
+        } catch (e) {
+          if (e.code === "ESRCH") {
+            try { fs.unlinkSync(lockPath); } catch {}
+            try { fs.unlinkSync(path.join(userData, "SingletonSocket")); } catch {}
+            try { fs.unlinkSync(path.join(userData, "SingletonCookie")); } catch {}
+          }
+        }
+      }
+    }
+  } catch {}
+}
+
+cleanupStaleSingletonLock();
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -940,6 +1281,13 @@ if (!gotLock) {
 
 app.whenReady().then(async () => {
   const openMainOnStart = process.env.FRIDAY_OPEN_MAIN === "1";
+  if (process.platform === "darwin" && app.dock) {
+    const iconPath = fridayIconPath();
+    if (iconPath) {
+      app.dock.setIcon(nativeImage.createFromPath(iconPath));
+    }
+    app.dock.show();
+  }
   createOverlayWindow();
   await createWindow();
   claimCompanionHotkeys();
@@ -948,6 +1296,9 @@ app.whenReady().then(async () => {
     await deactivateCompanionMode();
     await openMainApp();
     logToFile("FRIDAY main app opened (companion disabled on startup)");
+  } else if (process.env.FRIDAY_SHOW_COMPANION === "1") {
+    showCompanionOverlay();
+    logToFile("FRIDAY companion opened immediately on startup via FRIDAY_SHOW_COMPANION");
   } else {
     await syncCompanionFromBackend();
   }
@@ -972,16 +1323,16 @@ app.on("before-quit", async (event) => {
   await killWebProcessTree();
   await killStaleBackendOnPort(BACKEND_PORT);
   await killStaleBackendOnPort(WEB_PORT);
+  await stopOllama();
   app.exit(0);
 });
 
 app.on("window-all-closed", () => {
-  if (pythonProcess) {
-    logToFile("Stopping backend...");
-    pythonProcess.kill("SIGINT");
-  }
-
   if (process.platform !== "darwin") {
+    if (pythonProcess) {
+      logToFile("Stopping backend...");
+      pythonProcess.kill("SIGINT");
+    }
     app.quit();
   }
 });

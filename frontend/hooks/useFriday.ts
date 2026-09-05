@@ -2,6 +2,9 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { ChatMessage } from "@/components/ChatArea";
+import { SearchBriefingData } from "@/components/SearchBriefing";
+import { AgentState } from "@/components/ui/orb";
+import { useBackendStatus } from "@/hooks/useBackendStatus";
 import { BACKEND_URL, WS_URL } from "@/lib/api";
 
 export interface ActionLogEntry {
@@ -29,136 +32,132 @@ export function useFriday() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [speechTranscript, setSpeechTranscript] = useState("");
-  const [agentState, setAgentState] = useState<
-    "idle" | "idle_listening" | "listening" | "thinking" | "talking" | "transcribing"
-  >("idle");
+  const [agentState, setAgentState] = useState<AgentState>("idle");
   const [actionLogs, setActionLogs] = useState<ActionLogEntry[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
-  const seenMsgsRef = useRef<Map<string, number>>(new Map());
-  const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasOfflineRef = useRef(false);
+  const backendStatusRef = useRef<string>("checking");
+  const chatAbortRef = useRef<AbortController | null>(null);
+
+  const { status: backendStatus, latency: backendLatency } = useBackendStatus(5000);
+
+  useEffect(() => {
+    backendStatusRef.current = backendStatus;
+  }, [backendStatus]);
+  const isBackendOnline = backendStatus === "online";
 
   const pushLog = useCallback((entry: ActionLogEntry) => {
     setActionLogs((prev) => {
-      const next = [entry, ...prev]; // newest first
-      return next.slice(0, 40);      // keep at most 40 entries
+      const next = [entry, ...prev];
+      return next.slice(0, 40);
     });
   }, []);
+
+  const resetUiToOffline = useCallback(() => {
+    setAgentState("offline");
+    setStreamingText("");
+    setSpeechTranscript("");
+  }, []);
+
+  const resetUiToIdle = useCallback(() => {
+    setAgentState("idle");
+    setStreamingText("");
+    setSpeechTranscript("");
+  }, []);
+
+  // Sync UI when HTTP health poll detects backend up/down
+  useEffect(() => {
+    if (backendStatus === "offline") {
+      if (!wasOfflineRef.current) {
+        wasOfflineRef.current = true;
+        resetUiToOffline();
+        pushLog(makeLog("System", "Backend offline — UI reset to standby", "error"));
+      }
+    } else if (backendStatus === "online") {
+      if (wasOfflineRef.current) {
+        wasOfflineRef.current = false;
+        setAgentState((s) => (s === "offline" ? "idle" : s));
+        pushLog(makeLog("System", "Backend online", "success"));
+      }
+    }
+  }, [backendStatus, pushLog, resetUiToOffline]);
 
   // ── Initialize WebSocket ──────────────────────────────────────────────────
   useEffect(() => {
     const scheduleReconnect = () => {
       if (reconnectTimerRef.current) return;
-      const attempt = reconnectAttemptRef.current;
-      const delay = Math.min(1000 * Math.pow(2, attempt), 15000);
       reconnectTimerRef.current = setTimeout(() => {
         reconnectTimerRef.current = null;
-        reconnectAttemptRef.current = attempt + 1;
         connectWs();
-      }, delay);
+      }, 3000);
     };
 
     const connectWs = () => {
       if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
         return;
       }
+
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        reconnectAttemptRef.current = 0;
-        pushLog(makeLog("WebSocket", "Connected to FRIDAY core", "success"));
+        pushLog(makeLog("WebSocket", "Connected to Friday core", "success"));
+        if (backendStatusRef.current !== "offline") {
+          setAgentState((s) => (s === "offline" ? "idle" : s));
+        }
       };
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
-        // ── State updates ──
         if (data.state) {
-          setAgentState(data.state as any);
+          const next = data.state as AgentState;
+          setAgentState(next);
           const stateLabels: Record<string, string> = {
             listening: "Listening for command…",
+            idle_listening: "Voice call active — ready for next command",
             thinking: "Processing request…",
             talking: "Generating response…",
             transcribing: "Transcribing audio…",
-            idle_listening: "Voice session standby",
             idle: "Standby",
           };
-          if (data.state !== "idle") {
+          if (data.state !== "idle" && data.state !== "idle_listening") {
             pushLog(makeLog("Core Engine", stateLabels[data.state] || data.state, "info"));
           }
         }
 
-        // ── Wake word ──
         if (data.type === "wake_word_detected") {
           pushLog(makeLog("STT", "Wake word detected", "success"));
         }
 
-        // ── System ready ──
         if (data.type === "system_ready") {
           pushLog(makeLog("System", "All systems online", "success"));
         }
 
-        // ── Response chunk for streaming ──
-        if (data.type === "response_chunk") {
-          setStreamingText((prev) => prev + data.text);
-          setMessages((prev) => {
-            const hasStream = prev.some((m) => m.id === "streaming-msg");
-            if (!hasStream) {
-              const newMsg: ChatMessage = {
-                id: "streaming-msg",
-                role: "assistant",
-                type: "text",
-                content: "",
-                isStreaming: true,
-                time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
-              };
-              return [...prev, newMsg];
-            }
-            return prev;
-          });
-        }
-
-        // ── TTS actually started — now show speaking state ──
-        if (data.type === "tts_started") {
-          setAgentState("talking");
-        }
-
-        // ── Chat messages from backend (with dedup) ──
-        if (data.type === "chat") {
+        if (data.type === "reset_complete") {
+          setMessages([]);
           setStreamingText("");
-          // Dedup: skip messages with identical content within 2 seconds
-          const dedupKey = `${data.role || "assistant"}:${data.text}`;
-          const now = Date.now();
-          const lastSeen = seenMsgsRef.current.get(dedupKey);
-          if (lastSeen && now - lastSeen < 2000) {
-            // Duplicate within 2s window — skip
-            return;
-          }
-          seenMsgsRef.current.set(dedupKey, now);
-          // Prune old entries every 20 messages to prevent memory leak
-          if (seenMsgsRef.current.size > 50) {
-            const cutoff = now - 5000;
-            Array.from(seenMsgsRef.current.entries()).forEach(([k, v]) => {
-              if (v < cutoff) seenMsgsRef.current.delete(k);
-            });
-          }
+          setSpeechTranscript("");
+          setAgentState((data.state as AgentState) || "idle");
+        }
 
-          const newMsg: ChatMessage = {
-            id: Math.random().toString(36).substring(7),
-            role: data.role || "assistant",
-            type: "voice",
-            content: data.text,
-            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
-          };
+        if (data.type === "chat") {
           setMessages((prev) => {
-            const filtered = prev.filter((m) => m.id !== "streaming-msg");
-            return [...filtered, newMsg];
+            const lastAssistant = [...prev].reverse().find((m) => m.role === "assistant");
+            if (lastAssistant?.content === data.text) return prev;
+            const newMsg: ChatMessage = {
+              id: Math.random().toString(36).substring(7),
+              role: data.role || "assistant",
+              type: "voice",
+              content: data.text,
+              time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
+            };
+            return [...prev, newMsg];
           });
           pushLog(makeLog("LLM", `Response: "${data.text.slice(0, 50)}${data.text.length > 50 ? "…" : ""}"`, "success"));
         }
 
-        // ── Partial transcript / live STT ──
         if (data.type === "transcript" || data.type === "transcript_chunk" || data.type === "partial_transcript") {
           if (data.countdown !== undefined && data.countdown > 0) {
             setSpeechTranscript(data.text + ` … (sending in ${data.countdown}s)`);
@@ -167,7 +166,6 @@ export function useFriday() {
           }
         }
 
-        // ── Final transcript → user message ──
         if (data.type === "user_message") {
           const userMsg: ChatMessage = {
             id: Math.random().toString(36).substring(7),
@@ -181,30 +179,57 @@ export function useFriday() {
           pushLog(makeLog("STT", `Finalised: "${data.text}"`, "success"));
         }
 
-        // ── Clear transcript if speech ended empty ──
         if (data.type === "transcript_clear") {
           setSpeechTranscript("");
         }
 
-        // ── Suggestion / Proactive Alert ──
-        if (data.type === "suggestion" || data.type === "alert") {
-          pushLog(makeLog("System Monitor", data.text, "error"));
-        }
-
-        // ── Agent steps (web/OS agent) ──
         if (data.type === "agent_step") {
           const status = data.status === "done" || data.status === "stopped" ? "success" : "pending";
           pushLog(makeLog("Agent", `Step ${data.step}: ${data.action}`, status));
         }
 
-        // ── Companion overlay (voice still runs through the main app pipeline) ──
-        if (data.type === "companion_mode") {
-          if (data.active) {
-            pushLog(makeLog("Companion", "Voice controls active — chat updates here", "info"));
+        if (data.type === "search_briefing") {
+          const briefing: SearchBriefingData = {
+            query: data.query || "",
+            url: data.url || "",
+            sources: Array.isArray(data.sources) ? data.sources : [],
+            status: data.status === "searching" ? "searching" : "ready",
+          };
+          setMessages((prev) => {
+            const lastAssistant = [...prev].reverse().find((m) => m.role === "assistant");
+            if (lastAssistant) {
+              const sameText = data.summary && lastAssistant.content === data.summary;
+              const searching = lastAssistant.briefing?.status === "searching" || lastAssistant.isStreaming;
+              if (sameText || searching || lastAssistant.briefing?.query === briefing.query) {
+                return prev.map((m) =>
+                  m.id === lastAssistant.id
+                    ? {
+                        ...m,
+                        content: data.summary || m.content,
+                        briefing,
+                        isStreaming: data.status === "searching" ? m.isStreaming : false,
+                      }
+                    : m
+                );
+              }
+            }
+            const newMsg: ChatMessage = {
+              id: "brief-" + Date.now(),
+              role: "assistant",
+              type: "voice",
+              content: data.summary || `Searching the web for ${briefing.query}…`,
+              time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
+              briefing,
+            };
+            return [...prev, newMsg];
+          });
+          if (data.status === "searching") {
+            pushLog(makeLog("Browser", `Searching: ${data.query}`, "pending"));
+          } else {
+            pushLog(makeLog("Browser", `Search briefing ready (${(data.sources || []).length} sources)`, "success"));
           }
         }
 
-        // ── Focus window ──
         if (data.action === "focus_window") {
           window.focus();
           pushLog(makeLog("UI", "Window focus restored", "info"));
@@ -212,59 +237,30 @@ export function useFriday() {
       };
 
       ws.onclose = () => {
-        const nextDelay = Math.min(1000 * Math.pow(2, reconnectAttemptRef.current), 15000);
-        pushLog(makeLog("WebSocket", `Connection lost — retrying in ${Math.round(nextDelay / 1000)}s`, "error"));
-        setAgentState("idle");
+        resetUiToOffline();
+        pushLog(makeLog("WebSocket", "Connection lost — retrying in 3s", "error"));
         scheduleReconnect();
       };
 
       ws.onerror = () => ws.close();
     };
 
-    fetch(`${BACKEND_URL}/health`)
-      .then((r) => { if (r.ok) connectWs(); else scheduleReconnect(); })
-      .catch(() => scheduleReconnect());
+    connectWs();
 
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       wsRef.current?.close();
     };
-  }, [pushLog]);
+  }, [pushLog, resetUiToIdle, resetUiToOffline]);
 
-  const isBackendReachable = useCallback(async () => {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10000);
-      const res = await fetch(`${BACKEND_URL}/health`, {
-        method: "GET",
-        cache: "no-store",
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timer));
-      return res.ok;
-    } catch {
-      return false;
-    }
-  }, []);
-
-  // ── Send message (prefer WS, fallback to HTTP) ─────────────────────────────
+  // ── Send message ──────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
 
-    const online = await isBackendReachable();
-    if (!online) {
+    if (!isBackendOnline) {
+      resetUiToOffline();
       pushLog(makeLog("Chat", "Backend offline — message not sent", "error"));
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: "offline-" + Date.now(),
-          role: "assistant",
-          type: "text",
-          content: "Backend offline — message not sent. Run `npm run stop:desktop` then `npm run dev:desktop` to restart.",
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
-        },
-      ]);
-      setAgentState("idle");
       return;
     }
 
@@ -284,71 +280,183 @@ export function useFriday() {
       },
     ]);
 
-    // Prefer WebSocket for lower latency, fallback to HTTP
-    const payload = {
-      event: "command",
-      text: trimmed,
-      id: userMsgId,
-      voice: true,
-    };
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(payload));
-    } else {
-      try {
-        const response = await fetch(`${BACKEND_URL}/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: trimmed, id: userMsgId, voice: true }),
-        });
-        if (!response.ok) throw new Error("HTTP " + response.status);
-      } catch (err) {
-        pushLog(makeLog("Chat", `Error: ${String(err)}`, "error"));
-        setAgentState("idle");
+    chatAbortRef.current?.abort();
+    const controller = new AbortController();
+    chatAbortRef.current = controller;
+
+    const assistantMsgId = "assistant-" + Date.now();
+    let finalText = "";
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: trimmed, id: userMsgId }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+
+      const reader = response.body?.getReader();
+      if (reader) {
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.text) {
+                finalText += payload.text;
+                const currentContent = finalText;
+                setStreamingText(currentContent);
+                setAgentState("talking");
+                setMessages((prev) => {
+                  const exists = prev.some((m) => m.id === assistantMsgId);
+                  const lastAssistant = [...prev].reverse().find((m) => m.role === "assistant");
+                  if (
+                    !exists &&
+                    lastAssistant &&
+                    lastAssistant.content === currentContent &&
+                    lastAssistant.id !== assistantMsgId
+                  ) {
+                    return prev;
+                  }
+                  const assistantMsg: ChatMessage = {
+                    id: assistantMsgId,
+                    role: "assistant",
+                    type: "text",
+                    content: currentContent,
+                    isStreaming: true,
+                    time: new Date().toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    }),
+                    briefing: prev.find((m) => m.id === assistantMsgId)?.briefing,
+                  };
+                  if (!exists) return [...prev, assistantMsg];
+                  return prev.map((m) =>
+                    m.id === assistantMsgId ? { ...m, content: currentContent } : m
+                  );
+                });
+              }
+              if (payload.done) {
+                setStreamingText("");
+                setAgentState("idle");
+                if (finalText) {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsgId
+                        ? { ...m, content: finalText, isStreaming: false }
+                        : m
+                    )
+                  );
+                } else {
+                  setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
+                }
+              }
+              if (payload.error) {
+                pushLog(makeLog("Chat", `Error: ${payload.error}`, "error"));
+                setAgentState("idle");
+                setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
+              }
+            } catch {
+              // ignore malformed SSE chunks
+            }
+          }
+        }
+        setStreamingText("");
+        setAgentState((s) => (s === "thinking" || s === "talking" ? "idle" : s));
+      }
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      pushLog(makeLog("Chat", `Error: ${String(err)}`, "error"));
+      setAgentState("idle");
+      resetUiToOffline();
+    } finally {
+      if (chatAbortRef.current === controller) {
+        chatAbortRef.current = null;
       }
     }
-  }, [pushLog, isBackendReachable]);
+  }, [isBackendOnline, pushLog, resetUiToOffline]);
 
   // ── Mic Toggle ────────────────────────────────────────────────────────────
   const toggleMic = useCallback(async () => {
+    if (!isBackendOnline) {
+      resetUiToOffline();
+      pushLog(makeLog("Voice", "Backend offline — voice mode unavailable", "error"));
+      return;
+    }
+
     try {
-      const stopVoiceStates = new Set([
-        "listening",
-        "thinking",
-        "talking",
-        "transcribing",
-      ]);
-      if (stopVoiceStates.has(agentState)) {
+      const inVoiceSession =
+        agentState !== "idle" && agentState !== "offline";
+
+      if (inVoiceSession) {
         await fetch(`${BACKEND_URL}/stop-trigger`, { method: "POST" });
+        resetUiToIdle();
         pushLog(makeLog("Voice", "Stop trigger sent", "info"));
-        setAgentState("idle");
         return;
       }
+
       const response = await fetch(`${BACKEND_URL}/listen-trigger`, { method: "POST" });
       if (response.ok) {
         setAgentState("listening");
         pushLog(makeLog("Voice", "Listen trigger activated", "success"));
+      } else {
+        throw new Error("HTTP " + response.status);
       }
     } catch (err) {
       pushLog(makeLog("Voice", `Mic error: ${String(err)}`, "error"));
+      resetUiToOffline();
     }
-  }, [agentState, pushLog]);
+  }, [agentState, isBackendOnline, pushLog, resetUiToIdle, resetUiToOffline]);
 
   const clearChat = useCallback(async () => {
-    try {
-      pushLog(makeLog("UI", "Initializing full systems refresh...", "info"));
-      const response = await fetch(`${BACKEND_URL}/reset`, { method: "POST" });
-      if (response.ok) {
-        setMessages([]);
-        pushLog(makeLog("UI", "Chat fully reset: terminated active processes & cleared memory", "success"));
-      } else {
-        throw new Error(`Server returned status ${response.status}`);
-      }
-    } catch (err) {
-      pushLog(makeLog("UI", `Failed to fully reset chat: ${String(err)}`, "error"));
-      // Still clear messages locally as fallback
-      setMessages([]);
+    chatAbortRef.current?.abort();
+    chatAbortRef.current = null;
+
+    setMessages([]);
+    setStreamingText("");
+    setSpeechTranscript("");
+    setAgentState("idle");
+
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ event: "stop" }));
     }
-  }, [pushLog]);
+
+    if (!isBackendOnline) {
+      pushLog(makeLog("UI", "Chat cleared locally — backend offline", "info"));
+      return;
+    }
+
+    try {
+      pushLog(makeLog("UI", "Stopping voice, speech, and all tasks…", "info"));
+      const response = await fetch(`${BACKEND_URL}/reset`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      const data = await response.json();
+      const stopped = data.cancelled_tasks ?? 0;
+      pushLog(
+        makeLog(
+          "UI",
+          stopped > 0
+            ? `Chat refreshed — ${stopped} background task(s) stopped`
+            : "Chat refreshed — voice and speech stopped",
+          "success"
+        )
+      );
+    } catch (err) {
+      pushLog(makeLog("UI", `Reset failed: ${String(err)}`, "error"));
+      resetUiToOffline();
+    }
+  }, [isBackendOnline, pushLog, resetUiToOffline]);
 
   return {
     messages,
@@ -356,11 +464,14 @@ export function useFriday() {
     setInputText,
     settingsOpen,
     setSettingsOpen,
-    isListening: agentState === "listening",
+    isListening: agentState === "listening" || agentState === "idle_listening",
     isSpeaking: agentState === "talking",
     streamingText,
     speechTranscript,
     agentState,
+    backendStatus,
+    backendLatency,
+    isBackendOnline,
     actionLogs,
     sendMessage,
     toggleMic,

@@ -7,24 +7,33 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
 } from "@/components/ui/dropdown-menu";
-import { useBackendStatus } from "@/hooks/useBackendStatus";
+import { useBackendStatus, BackendStatus } from "@/hooks/useBackendStatus";
 
 interface TopBarProps {
   onSettingsClick: () => void;
   onRefreshChat: () => void;
+  backendStatus?: BackendStatus;
+  backendLatency?: number | null;
 }
 
 /* Shared icon-button class — applied directly to native <button> elements */
 const iconBtn =
   "inline-flex items-center justify-center rounded-xl h-9 w-9 bg-white/40 dark:bg-zinc-800/40 hover:bg-white/80 dark:hover:bg-zinc-700/80 border border-white/60 dark:border-zinc-700/60 shadow-sm transition-all active:scale-95 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
 
-export default function TopBar({ onSettingsClick, onRefreshChat }: TopBarProps) {
-  const { status, latency, ready, sttReady } = useBackendStatus(3000);
+export default function TopBar({
+  onSettingsClick,
+  onRefreshChat,
+  backendStatus: backendStatusProp,
+  backendLatency: backendLatencyProp,
+}: TopBarProps) {
+  const polled = useBackendStatus(backendStatusProp ? 60000 : 5000);
+  const status = backendStatusProp ?? polled.status;
+  const latency = backendLatencyProp ?? polled.latency;
   const [networkOpen, setNetworkOpen] = useState(false);
 
   const isOnline   = status === "online";
-  const isChecking = status === "checking" || status === "starting";
-  const isStarting = status === "starting";
+  const isChecking = status === "checking";
+  const isOffline  = status === "offline";
 
   /* ── badge colours ── */
   const badgeCls = isChecking
@@ -39,13 +48,7 @@ export default function TopBar({ onSettingsClick, onRefreshChat }: TopBarProps) 
     ? "bg-emerald-500 animate-pulse"
     : "bg-red-500";
 
-  const badgeLabel = isOnline
-    ? "BACKEND ONLINE"
-    : isStarting
-    ? "STARTING…"
-    : isChecking
-    ? "CHECKING…"
-    : "BACKEND OFFLINE";
+  const badgeLabel = isChecking ? "CHECKING…" : isOnline ? "BACKEND ONLINE" : "BACKEND OFFLINE";
 
   const StatusIcon = isChecking ? Loader2 : isOnline ? Wifi : WifiOff;
 
@@ -56,9 +59,9 @@ export default function TopBar({ onSettingsClick, onRefreshChat }: TopBarProps) 
       <div className="flex items-center gap-6">
         <div className="flex flex-col">
           <div className="flex items-center gap-1.5">
-            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+            <div className={`w-1.5 h-1.5 rounded-full ${isChecking ? "bg-amber-400 animate-pulse" : isOnline ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
             <span className="text-[10px] font-bold tracking-[0.15em] text-zinc-900 dark:text-zinc-100 uppercase">
-              System Core
+              {isOffline ? "Core Offline" : "System Core"}
             </span>
           </div>
           <span className="text-[9px] text-muted-foreground font-jetbrains mt-0.5">
@@ -83,7 +86,7 @@ export default function TopBar({ onSettingsClick, onRefreshChat }: TopBarProps) 
       {/* ── CENTER — Logo ── */}
       <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none">
         <h1 className="text-lg font-bold tracking-[0.4em] text-zinc-900 dark:text-zinc-100 filter drop-shadow-sm">
-          <span className="opacity-40">F.R.I.D.A.Y</span>
+          <span className="opacity-40">F.R.I.D.A.Y.</span>
         </h1>
       </div>
 
@@ -164,15 +167,7 @@ export default function TopBar({ onSettingsClick, onRefreshChat }: TopBarProps) 
             <div className="px-5 py-4 space-y-3">
               <StatRow
                 label="Backend"
-                value={
-                  isOnline
-                    ? "ONLINE"
-                    : status === "starting"
-                    ? "STARTING"
-                    : isChecking
-                    ? "CHECKING"
-                    : "OFFLINE"
-                }
+                value={isChecking ? "—" : isOnline ? "ONLINE" : "OFFLINE"}
                   valueClass={
                     isOnline
                       ? "text-emerald-600 dark:text-emerald-400"

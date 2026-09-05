@@ -129,7 +129,9 @@ def _param_open_app(m: re.Match[str] | None, text: str) -> dict[str, Any]:
     else:
         app = re.sub(r"^(open|launch|start|run)\s+", "", text, flags=re.I)
     app = re.sub(r"\s+(app|application|please|for me)\s*$", "", app.strip(), flags=re.I)
-    return {"app": app.strip()}
+    app = app.strip("\"'`").strip()
+    app = re.sub(r"[.!?,;:]+$", "", app).strip()
+    return {"app": app}
 
 
 def _param_new_project(m: re.Match[str] | None, text: str) -> dict[str, Any]:
@@ -252,8 +254,12 @@ def _param_news(m: re.Match[str] | None, text: str) -> dict[str, Any]:
 
 
 def _param_youtube(m: re.Match[str] | None, text: str) -> dict[str, Any]:
-    q = re.sub(r".*\b(play|search|open|watch)\s+", "", text, flags=re.I).strip()
+    q = re.sub(r".*\b(play|search|open|watch|launch)\s+", "", text, flags=re.I).strip()
     q = re.sub(r"\s+(on|in)\s+youtube.*$", "", q, flags=re.I).strip()
+    q = q.strip("\"'`").strip()
+    q = re.sub(r"[.!?,;:]+$", "", q).strip()
+    if re.fullmatch(r"(?:you\s*tube|youtube)", q, re.I):
+        q = ""
     return {"query": q}
 
 
@@ -264,19 +270,40 @@ def _param_play_music(m: re.Match[str] | None, text: str) -> dict[str, Any]:
 
 
 def _param_whatsapp(m: re.Match[str] | None, text: str) -> dict[str, Any]:
-    contact = re.search(
-        r"(?:to|message|text|send(?:\s+to)?)\s+([a-zA-Z][\w\s]{1,30}?)(?:\s+(?:saying|and\s+say|that|,))",
-        text,
+    # 1. Extract message content after "saying", "that", "say", "message"
+    msg_m = re.search(r'(?:saying|say|that|message\s+as|with\s+text)\s+["\']?(.+?)["\']?\s*$', text, re.I)
+    msg_text = msg_m.group(1).strip() if msg_m else None
+
+    # 2. Extract contact name before "saying" / "on whatsapp" / "in whatsapp"
+    contact_text = text[:msg_m.start()] if msg_m else text
+
+    contact_m = re.search(
+        r"(?:to|message|text|send(?:\s+to)?|search(?:\s+for)?)\s+([a-zA-Z][\w\s]{1,30}?)(?:\s+(?:on\s+whatsapp|in\s+whatsapp|via\s+whatsapp|$))",
+        contact_text,
         re.I,
     )
-    msg = re.search(
-        r'(?:saying|say|message|that|with)\s+["\']?(.+?)["\']?\s*$',
-        text,
-        re.I,
-    )
+    contact_name = None
+    if contact_m:
+        contact_name = contact_m.group(1).strip()
+    else:
+        search_m = re.search(
+            r"\b(?:search|find|look|open)\s+(?:for\s+)?([a-zA-Z][\w\s]{1,25}?)(?:\s+(?:in|on)\s+whatsapp|\s*$)",
+            contact_text,
+            re.I,
+        )
+        if search_m:
+            contact_name = search_m.group(1).strip()
+
+    if contact_name:
+        contact_name = re.sub(r"\s+(?:in|on|via)\s+whatsapp.*", "", contact_name, flags=re.I).strip()
+        contact_name = re.sub(r"^(?:to|for|the|a\s+message\s+to)\s+", "", contact_name, flags=re.I).strip()
+
+    search_only = msg_text is None or not msg_text
+
     return {
-        "contact": contact.group(1).strip() if contact else None,
-        "message": msg.group(1).strip() if msg else None,
+        "contact": contact_name if contact_name else None,
+        "message": msg_text,
+        "search_only": search_only,
     }
 
 
@@ -303,9 +330,30 @@ def _param_timer(m: re.Match[str] | None, text: str) -> dict[str, Any]:
 
 
 def _param_calculate(m: re.Match[str] | None, text: str) -> dict[str, Any]:
-    expr = re.sub(r".*\b(calculate|compute|what is|what's)\s+", "", text, flags=re.I).strip()
+    expr = re.sub(
+        r".*\b(?:calculate|compute|solve|what(?:\s+is|'s)|today\s+is)\s+",
+        "",
+        text,
+        flags=re.I,
+    ).strip()
     expr = expr.rstrip("?!. ")
-    return {"expression": expr}
+    expr_clean = re.sub(r"\bplus\b", "+", expr, flags=re.I)
+    expr_clean = re.sub(r"\bminus\b", "-", expr_clean, flags=re.I)
+    expr_clean = re.sub(r"\btimes\b", "*", expr_clean, flags=re.I)
+    expr_clean = re.sub(r"\bdivided\s+by\b", "/", expr_clean, flags=re.I)
+    expr_clean = re.sub(r"\s+", "", expr_clean)
+    return {"expression": expr_clean}
+
+
+def _param_note(m: re.Match[str] | None, text: str) -> dict[str, Any]:
+    note_text = re.sub(
+        r".*\b(?:write|take|create|make)\s+(?:a\s+)?(?:note|memo)(?:\s+(?:in|on)\s+notes)?(?:\s+(?:saying|about|that|with))?\s*",
+        "",
+        text,
+        flags=re.I,
+    ).strip()
+    note_text = note_text.rstrip("?!. ")
+    return {"app": "notes", "note_text": note_text}
 
 
 def _param_weather(m: re.Match[str] | None, text: str) -> dict[str, Any]:
@@ -348,7 +396,37 @@ class RoutingRule:
 
 
 ROUTING_RULES: list[RoutingRule] = [
-    # ── Conversation (highest priority) ───────────────────────────────────
+    # ── STOP — highest priority in the entire rule list ───────────────────────
+    RoutingRule(
+        "stop_now",
+        r"^(stop|cancel|abort|quit|friday\s+stop|hey\s+friday\s+stop|enough|shut\s+up|be\s+quiet\s+now)[\s!.]*$",
+        IntentCategory.STOP,
+        0.99,
+        _noop,
+    ),
+    RoutingRule(
+        "stop_mid",
+        r"\b(stop that|stop now|cancel that|abort that|never\s+mind|forget\s+it|stop\s+everything)\b",
+        IntentCategory.STOP,
+        0.98,
+        _noop,
+    ),
+    # ── Standing orders ────────────────────────────────────────────────────────
+    RoutingRule(
+        "standing_order_set",
+        r"\b(always|never|from\s+now\s+on|standing\s+order|remember\s+to\s+always|always\s+confirm|stop\s+asking\s+me)\b",
+        IntentCategory.STANDING_ORDER,
+        0.91,
+        _noop,
+    ),
+    RoutingRule(
+        "standing_order_remove",
+        r"\b(remove\s+standing\s+order|forget\s+that\s+rule|cancel\s+standing\s+order|stop\s+always)\b",
+        IntentCategory.STANDING_ORDER,
+        0.93,
+        _noop,
+    ),
+    # ── Conversation (highest priority after STOP) ─────────────────────────────
     RoutingRule("greeting", r"^(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy)\b", IntentCategory.CHAT, 0.92, _noop),
     RoutingRule("thanks", r"^(thanks|thank you|thx|cheers)\b", IntentCategory.CHAT, 0.90, _noop),
     RoutingRule("goodbye", r"^(bye|goodbye|see you|later)\b", IntentCategory.CHAT, 0.88, _noop),
@@ -360,6 +438,7 @@ ROUTING_RULES: list[RoutingRule] = [
         0.94,
         _noop,
     ),
+    RoutingRule("joke", r"\b(?:tell|give|say|hear|crack)\s+(?:me\s+)?(?:a\s+)?joke\b|\bknow\s+any\s+jokes\b|^(?:tell\s+me\s+a\s+)?joke[!?.]*$", IntentCategory.CHAT, 0.97, _noop),
     RoutingRule("speak_aloud", r"\b(speak|say|tell\s+me)\s+(something|a\s+joke|a\s+story|out\s+loud|aloud)\b", IntentCategory.CHAT, 0.93, _noop),
     RoutingRule("speak_verb", r"^(speak|say)\b", IntentCategory.CHAT, 0.91, _noop),
     # ── Media transport (before generic play) ─────────────────────────────
@@ -421,7 +500,7 @@ ROUTING_RULES: list[RoutingRule] = [
         _param_new_project,
     ),
     RoutingRule("open_app_generic", r"\b(open|launch|start|run)\s+(?P<app>[\w\s.+]+?)\s*$", IntentCategory.OPEN_APP, 0.93, _param_open_app),
-    RoutingRule("open_app_named", r"\b(open|launch|start|run)\s+(?P<app>chrome|notepad|calculator|spotify|discord|vscode|terminal|whatsapp|youtube|files|explorer|settings|file explorer)\b", IntentCategory.OPEN_APP, 0.91, _param_open_app),
+    RoutingRule("open_app_named", r"\b(open|launch|start|run)\s+(?P<app>chrome|notepad|calculator|spotify|discord|vscode|terminal|whatsapp|files|explorer|settings|file explorer)\b", IntentCategory.OPEN_APP, 0.91, _param_open_app),
     RoutingRule(
         "search_compound",
         r"\b(search\b.*\band\s+scroll|search\s+and\s+(open|browse|read|scroll)|browse\s+.*\band\s+scroll)\b",
@@ -439,9 +518,23 @@ ROUTING_RULES: list[RoutingRule] = [
     RoutingRule("play_some_music", r"\bplay\s+(some\s+)?music\b", IntentCategory.PLAY_MEDIA, 0.93, _param_play_music),
     RoutingRule("play_song", r"\b(play|start)\b(?!\s+(the\s+)?(next|previous|prev|last)\b).*?\b(music|song|track)\b", IntentCategory.PLAY_MEDIA, 0.94, _param_play_music),
     RoutingRule("play_title", r"\b(play|start)\b(?!\s+(the\s+)?(next|previous|prev|last)\b(\s+track)?)\s+[\w\s'\"-]{2,}", IntentCategory.PLAY_MEDIA, 0.90, _param_play_music),
-    RoutingRule("open_youtube", r"\b(open|launch)\s+.*\byoutube\b", IntentCategory.OPEN_YOUTUBE, 0.88, _param_youtube),
+    RoutingRule("open_youtube", r"\b(open|launch|start|run)\s+(?:the\s+)?(?:you\s*tube|youtube)\b", IntentCategory.OPEN_YOUTUBE, 0.97, _param_youtube),
     RoutingRule("search_youtube", r"\b(search|watch)\s+.*\bon\s+youtube\b", IntentCategory.OPEN_YOUTUBE, 0.87, _param_youtube),
     # ── Communication ─────────────────────────────────────────────────────
+    RoutingRule(
+        "whatsapp_confirm_send",
+        r"\b(?:yes\s+)?(?:send\s+it|send\s+the\s+message|proceed\s+and\s+send|send\s+to\s+(?:sathish|satish)|yes\s+send)\b",
+        IntentCategory.KEYBOARD_HOTKEY,
+        0.98,
+        lambda m, t: {"keys": ["enter"]},
+    ),
+    RoutingRule(
+        "whatsapp_search",
+        r"\b(?:search|find|look)\s+(?:for\s+)?(?P<contact>[a-zA-Z][\w\s]{1,25})\s+(?:in|on)\s+whatsapp\b|\bopen\s+whatsapp\s+and\s+search\s+(?:for\s+)?(?P<contact2>[a-zA-Z][\w\s]{1,25})\b",
+        IntentCategory.OPEN_WHATSAPP,
+        0.95,
+        _param_whatsapp,
+    ),
     RoutingRule("whatsapp_send", r"\b(send|message|text)\b.*\bwhatsapp\b", IntentCategory.OPEN_WHATSAPP, 0.90, _param_whatsapp),
     RoutingRule("whatsapp_open", r"\bwhatsapp\b.*\b(message|text|send)\b", IntentCategory.OPEN_WHATSAPP, 0.88, _param_whatsapp),
     RoutingRule(
@@ -450,6 +543,35 @@ ROUTING_RULES: list[RoutingRule] = [
         IntentCategory.OPEN_WHATSAPP,
         0.78,
         _param_whatsapp,
+    ),
+    # ── Friday presence (before OS sleep — higher priority) ─────────────────
+    RoutingRule(
+        "presence_sleep_timed",
+        r"\bgive me\s+(?:an?\s+)?\d+\s*(hour|minute|min|second)s?\b",
+        IntentCategory.PRESENCE_MODE,
+        0.98,
+        _noop,
+    ),
+    RoutingRule(
+        "presence_sleep_phrase",
+        r"\b(go to sleep|sleep mode|leave me alone|shut up for|stop listening|go away|be quiet for)\b",
+        IntentCategory.PRESENCE_MODE,
+        0.97,
+        _noop,
+    ),
+    RoutingRule(
+        "presence_quiet",
+        r"\b(quiet mode|just watch|watch mode|be less chatty|only speak when|stop talking unless)\b",
+        IntentCategory.PRESENCE_MODE,
+        0.96,
+        _noop,
+    ),
+    RoutingRule(
+        "presence_wake",
+        r"\b(i('m| am) back|come back|wake up|resume listening|start listening again|resident mode)\b",
+        IntentCategory.PRESENCE_MODE,
+        0.97,
+        _noop,
     ),
     # ── System ────────────────────────────────────────────────────────────
     RoutingRule("volume_adjust", r"\b(volume|sound)\b.*(up|down|set|mute|unmute|\d+)", IntentCategory.VOLUME_SET, 0.93, _param_volume),
@@ -469,7 +591,21 @@ ROUTING_RULES: list[RoutingRule] = [
     RoutingRule("smart_search", r"\b(smart search|look up)\b", IntentCategory.EXPLAIN, 0.86, _param_search),
     RoutingRule("explain", r"\b(explain|what is|what's|define|tell me about|who is|who's)\b", IntentCategory.EXPLAIN, 0.90, _noop),
     RoutingRule("summarise", r"\b(summarise|summarize|tldr|summary of)\b", IntentCategory.SUMMARISE, 0.88, _noop),
-    RoutingRule("calculate_verb", r"\b(calculate|compute|math)\b", IntentCategory.CALCULATE, 0.90, _noop),
+    RoutingRule(
+        "write_note",
+        r"\b(?:write|take|create|make)\s+(?:a\s+)?(?:note|memo)\b|\bnote\s+down\b",
+        IntentCategory.OPEN_APP,
+        0.96,
+        _param_note,
+    ),
+    RoutingRule("calculate_verb", r"\b(calculate|compute|math)\b", IntentCategory.CALCULATE, 0.90, _param_calculate),
+    RoutingRule(
+        "calculate_query",
+        r"\b(?:calculate|compute|solve|what(?:'s|\s+is)|today\s+is)\s+\d+\s*(?:\+|\-|\*|\/|plus|minus|times|divided\s+by)\s*\d+\b|\b\d+\s*(?:\+|\-|\*|\/|plus|minus|times|divided\s+by)\s*\d+\b",
+        IntentCategory.CALCULATE,
+        0.96,
+        _param_calculate,
+    ),
     RoutingRule("calculate_expr", r"\bwhat(?:'s| is)\s+[\d\s+\-*/().]+", IntentCategory.CALCULATE, 0.92, _param_calculate),
     RoutingRule("translate", r"\b(translate|in (spanish|french|german|hindi|telugu|japanese|tamil))\b", IntentCategory.TRANSLATE, 0.90, _param_translate),
     RoutingRule("write_text", r"\b(write|draft|compose)\b", IntentCategory.WRITE_TEXT, 0.83, _noop),
@@ -490,7 +626,7 @@ _REQUIRED_PARAMS: dict[IntentCategory, tuple[str, ...]] = {
     IntentCategory.KEYBOARD_TYPE: ("text",),
     IntentCategory.OPEN_APP: ("app",),
     IntentCategory.SEARCH_WEB: ("query",),
-    IntentCategory.OPEN_YOUTUBE: ("query",),
+    IntentCategory.OPEN_YOUTUBE: (),
     IntentCategory.TIMER: ("duration",),
 }
 
@@ -533,6 +669,21 @@ class RuleEngine:
         text = text.strip()
         if not text:
             return ClassificationResult(IntentCategory.CHAT, 0.50, {}, "rule")
+
+        # Guard: How-to questions ("How to close tabs", "Tell me how to...", "What is the shortcut")
+        # are requests for explanation/instructions, NOT action execution commands!
+        if re.search(
+            r"\b(?:how\s+to|how\s+do\s+i|how\s+can\s+i|tell\s+me\s+how|explain\s+how|what\s+is\s+the\s+(?:shortcut|key|command|way))\b",
+            text,
+            re.I,
+        ):
+            return ClassificationResult(
+                intent=IntentCategory.EXPLAIN,
+                confidence=0.92,
+                params={"query": text},
+                source="rule",
+                matched_rule="how_to_explanation",
+            )
 
         candidates: list[tuple[float, int, RoutingRule, dict[str, Any], re.Match[str]]] = []
 
@@ -584,6 +735,8 @@ class RuleEngine:
             conf -= 0.18
         if rule.intent == IntentCategory.KEYBOARD_HOTKEY and re.search(r"\brefresh\b", text, re.I):
             conf += 0.03
+        if rule.intent == IntentCategory.OPEN_APP and re.search(r"\byou\s*tube\b", text, re.I):
+            conf -= 0.25
         return _clamp_confidence(conf)
 
     @staticmethod
@@ -825,15 +978,9 @@ class IntentRouter:
 
     async def _call_llm(self, prompt: str) -> str | None:
         try:
-            from config import settings
-            from brain.ollama_client import OllamaClient
+            from brain.groq_client import groq_complete
 
-            client = OllamaClient()
-            if settings.GROQ_API_KEY:
-                from brain.model_router import FAST_MODEL
-
-                return await client._groq_fallback(prompt, FAST_MODEL, max_tokens=220)
-            return await client.complete(prompt, model="llama3.2", max_tokens=220)
+            return await groq_complete(prompt, max_tokens=220)
         except Exception as exc:
             logger.warning("LLM classify call failed: %s", exc)
             return None

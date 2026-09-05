@@ -33,15 +33,17 @@ _VISION_PROMPT = (
 
 def is_ollama_available() -> bool:
     """Check if Ollama is running at the configured host (cached 30s)."""
-    from brain.context_manager import is_resource_constrained
-    if is_resource_constrained(ram_threshold=85.0):
-        return False
+    from config import use_ollama
+    if not use_ollama():
+        from brain.context_manager import is_resource_constrained
+        if is_resource_constrained(ram_threshold=85.0):
+            return False
 
     now = time.time()
     if now - _ollama_cache["ts"] < _OLLAMA_CACHE_TTL:
         return _ollama_cache["available"]
 
-    host = getattr(settings, "OLLAMA_HOST", "http://127.0.0.1:11434")
+    host = getattr(settings, "OLLAMA_URL", None) or getattr(settings, "OLLAMA_HOST", "http://127.0.0.1:11434")
     available = False
     try:
         resp = httpx.get(f"{host}/api/tags", timeout=2.5)
@@ -61,7 +63,11 @@ def analyze_screen(image_base64: str) -> str:
     if not image_base64:
         return "No image data provided."
 
-    provider = getattr(settings, "VISION_PROVIDER", "groq")
+    from config import use_ollama
+
+    provider = getattr(settings, "VISION_PROVIDER", None)
+    if not provider:
+        provider = "ollama" if use_ollama() else "groq"
 
     # Auto mode: try ollama first if available, else groq
     if provider == "auto":
@@ -142,23 +148,28 @@ def _analyze_groq(image_base64: str) -> str:
 
 
 def _analyze_ollama(image_base64: str) -> str:
-    """Analyze screenshot via local Ollama moondream model."""
-    host = getattr(settings, "OLLAMA_HOST", "http://127.0.0.1:11434")
+    """Analyze screenshot via the local Ollama model."""
+    host = getattr(settings, "OLLAMA_URL", None) or getattr(settings, "OLLAMA_HOST", "http://127.0.0.1:11434")
+    models = []
+    local_model = getattr(settings, "OLLAMA_MODEL", "") or ""
+    if local_model:
+        models.append(local_model)
+    models.append("moondream:latest")
 
-    try:
-        payload = {
-            "model": "moondream:latest",
-            "prompt": _VISION_PROMPT,
-            "images": [image_base64],
-            "stream": False,
-        }
-
-        resp = httpx.post(f"{host}/api/generate", json=payload, timeout=25.0)
-        if resp.status_code == 200:
-            return resp.json().get("response", "").strip()
-        print(f"[VisionAnalyzer] Ollama returned {resp.status_code}")
-        return ""
-
-    except Exception as e:
-        print(f"[VisionAnalyzer] Ollama vision error: {e}")
-        return ""
+    for model in models:
+        try:
+            payload = {
+                "model": model,
+                "prompt": _VISION_PROMPT,
+                "images": [image_base64],
+                "stream": False,
+            }
+            resp = httpx.post(f"{host}/api/generate", json=payload, timeout=40.0)
+            if resp.status_code == 200:
+                text = (resp.json().get("response") or "").strip()
+                if text:
+                    return text
+            print(f"[VisionAnalyzer] Ollama {model} returned {resp.status_code}")
+        except Exception as e:
+            print(f"[VisionAnalyzer] Ollama vision error ({model}): {e}")
+    return ""

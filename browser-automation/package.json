@@ -1,0 +1,18 @@
+{
+  "name": "friday-browser-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Puppeteer control plane for FRIDAY advanced browser automation",
+  "type": "module",
+  "main": "src/server.mjs",
+  "scripts": {
+    "start": "PUPPETEER_SKIP_DOWNLOAD=true node src/server.mjs",
+    "sync-profile": "node src/sync_chrome_profile.mjs",
+    "test:youtube": "node src/cli.mjs youtube-play \"AC/DC Back in Black\"",
+    "test:scroll": "node src/cli.mjs scroll-test",
+    "test:spotify-login": "node src/cli.mjs spotify-login"
+  },
+  "dependencies": {
+    "puppeteer": "^24.15.0"
+  }
+}

@@ -10,11 +10,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
 from typing import TypedDict
 
 import pyautogui
-from pywinauto import Application
+try:
+    from pywinauto import Application
+except ImportError:
+    Application = None
 
 from executor.automation import (
     _force_whatsapp_foreground,
@@ -601,6 +605,136 @@ def _execute_send_whatsapp_message(
     if not contact:
         base["error"] = "Contact name is required."
         return base
+
+    import platform
+    if platform.system() == "Darwin":
+        import re
+        import subprocess
+        import urllib.parse
+        from executor.whatsapp_phonebook import resolve_contact_keyword
+
+        display_name, search_queries, from_book = resolve_contact_keyword(contact)
+        phone = ep.get("phone_number")
+        if not phone and search_queries:
+            for q in search_queries:
+                clean_digits = re.sub(r"\D", "", q)
+                if len(clean_digits) >= 10:
+                    phone = clean_digits
+                    break
+
+        # Fast and direct: If phone number is known, open conversation directly via whatsapp:// URL scheme
+        if phone:
+            clean_phone = re.sub(r"\D", "", str(phone))
+            if message:
+                url = f"whatsapp://send?phone={clean_phone}&text={urllib.parse.quote(message)}"
+            else:
+                url = f"whatsapp://send?phone={clean_phone}"
+
+            subprocess.run(["open", url], check=False)
+            time.sleep(0.8)
+
+            if message:
+                send_script = '''
+                tell application "WhatsApp" to activate
+                delay 0.3
+                tell application "System Events"
+                    tell process "WhatsApp"
+                        key code 36
+                    end tell
+                end tell
+                '''
+                subprocess.run(["osascript", "-e", send_script], capture_output=True, text=True, timeout=5)
+
+            base["success"] = True
+            base["contact"] = display_name or contact
+            base["stage"] = "sent" if message else "chat_opened"
+            return base
+
+        # Fallback: Search contact in UI via AppleScript
+        search_term = display_name if display_name else (search_queries[0] if search_queries else contact)
+        escaped_search = search_term.replace('"', '\\"')
+        escaped_message = message.replace('"', '\\"') if message else ""
+
+        subprocess.run(["open", "-a", "WhatsApp"], check=False)
+        time.sleep(0.5)
+
+        if not message:
+            # Search contact, arrow down to select first result, open chat
+            script = f'''
+            tell application "WhatsApp" to activate
+            delay 0.4
+            tell application "System Events"
+                tell process "WhatsApp"
+                    -- Open search
+                    keystroke "f" using command down
+                    delay 0.2
+                    -- Clear search field
+                    keystroke "a" using command down
+                    key code 51
+                    delay 0.1
+                    -- Type search number or contact name
+                    keystroke "{escaped_search}"
+                    delay 0.8
+                    -- Highlight first search result
+                    key code 125
+                    delay 0.2
+                    -- Open chat
+                    key code 36
+                end tell
+            end tell
+            '''
+        else:
+            # Search contact, arrow down, open chat, clear compose box, type message, send
+            script = f'''
+            tell application "WhatsApp" to activate
+            delay 0.4
+            tell application "System Events"
+                tell process "WhatsApp"
+                    -- Open search
+                    keystroke "f" using command down
+                    delay 0.2
+                    -- Clear search field
+                    keystroke "a" using command down
+                    key code 51
+                    delay 0.1
+                    -- Type search number or contact name
+                    keystroke "{escaped_search}"
+                    delay 0.8
+                    -- Highlight first search result
+                    key code 125
+                    delay 0.2
+                    -- Open chat
+                    key code 36
+                    delay 0.5
+                    -- Focus compose box and clear text field
+                    keystroke "a" using command down
+                    key code 51
+                    delay 0.1
+                    -- Type message
+                    keystroke "{escaped_message}"
+                    delay 0.2
+                    -- Send message
+                    key code 36
+                end tell
+            end tell
+            '''
+
+        try:
+            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=12)
+            if res.returncode == 0:
+                base["success"] = True
+                base["contact"] = display_name or contact
+                base["stage"] = "sent" if message else "search_complete"
+                return base
+            else:
+                logger.warning("WhatsApp AppleScript returned %d: %s", res.returncode, res.stderr)
+                base["error"] = f"WhatsApp automation: {res.stderr.strip()}"
+                base["stage"] = "script_error"
+                return base
+        except Exception as exc:
+            base["error"] = str(exc)
+            base["stage"] = "script_exception"
+            return base
 
     base["stage"] = "open"
     if _whatsapp_already_open():

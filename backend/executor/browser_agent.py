@@ -11,7 +11,6 @@ import re
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
 
 from brain.browser_knowledge import get_browser_knowledge
 from brain.browser_session_db import format_actions_for_memory, get_browser_session_db
@@ -216,11 +215,12 @@ async def run_browser_agent(
         return False, result.get("message", "Recipe failed")
 
     await client.start_session(resolved_mode)
-    llm = ChatGroq(
-        model_name=settings.LLM_MODEL or "llama-3.3-70b-versatile",
+    from brain.ollama_client import get_chat_llm
+
+    llm = get_chat_llm(
         temperature=0.1,
         max_tokens=256,
-        groq_api_key=settings.GROQ_API_KEY or None,
+        model=settings.LLM_MODEL,
     )
 
     messages: list[Any] = []

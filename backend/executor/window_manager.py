@@ -1,9 +1,14 @@
-import pygetwindow as gw
+try:
+    import pygetwindow as gw
+except ImportError:
+    gw = None
 import pyautogui
 import time
 
 def split_screen(left_window_title: str, right_window_title: str, left_ratio: float = 0.5):
     """Arrange two windows side by side on the primary monitor."""
+    if gw is None:
+        return "Window manager is not available on this platform."
     print(f"[WindowManager] Attempting to arrange: Left='{left_window_title}', Right='{right_window_title}'")
     
     # Wait a bit for WhatsApp Desktop state to stabilize
@@ -85,12 +90,24 @@ def bring_friday_to_front():
             
         WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
         user32.EnumWindows(WNDENUMPROC(enum_callback), 0)
+    elif platform.system() == "Darwin":
+        try:
+            import subprocess
+            subprocess.run(
+                ["osascript", "-e", 'tell application "Electron" to activate'],
+                capture_output=True,
+                timeout=1.0,
+            )
+        except Exception:
+            pass
     else:
-        friday_wins = [w for w in gw.getAllWindows() if w.title.lower().strip() == "f.r.i.d.a.y."]
-        if friday_wins:
-            try:
+        if gw is None or not hasattr(gw, "getAllWindows"):
+            return
+        try:
+            friday_wins = [w for w in gw.getAllWindows() if w.title and w.title.lower().strip() == "f.r.i.d.a.y."]
+            if friday_wins:
                 if friday_wins[0].isMinimized:
                     friday_wins[0].restore()
                 friday_wins[0].activate()
-            except Exception as e:
-                print(f"[WindowManager] Bring to front failed: {e}")
+        except Exception as e:
+            print(f"[WindowManager] Bring to front failed: {e}")

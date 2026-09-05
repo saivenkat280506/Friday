@@ -10,7 +10,19 @@ import sounddevice as sd
 from pocket_tts import TTSModel
 
 _DEFAULT_VOICE_WAV = Path(__file__).with_name("voices") / "friday-voice.wav"
-_FRAMES_AFTER_EOS = 1  # lower = faster synthesis; 1 is enough for clean endings
+# Official gated clone checkpoint from pocket-tts english.yaml.
+CLONE_WEIGHTS = (
+    "hf://kyutai/pocket-tts/languages/english/model.safetensors"
+    "@39592ff23c9ef80098bb74895d104c26275fe2c9"
+)
+# Optimal pocket-tts parameters for clear, natural, studio-quality speech
+_LOAD_TEMP = 0.30
+_LOAD_LSD_STEPS = 1
+_LOAD_NOISE_CLAMP = None
+_LOAD_EOS_THRESHOLD = -4.0
+_FRAMES_AFTER_EOS = None
+_PEAK_TARGET = 0.85
+_MAX_BOOST = 3.5
 
 _model = None
 _voice_state = None
@@ -21,6 +33,66 @@ _stop_event = threading.Event()
 _is_speaking = False
 _active_stream = None
 _playback_stream = None
+_afplay_proc = None
+
+
+# ── Duplex / echo helpers (Phase 0) ──────────────────────────────────────────
+
+def _mic_is_open() -> bool:
+    """True when STT mic InputStream is active — sd.stop() would kill it on macOS."""
+    try:
+        from services.runtime_state import flags
+
+        if bool(getattr(flags, "is_listening", False)):
+            return True
+    except Exception:
+        pass
+    try:
+        from stt.duplex import duplex as _dup
+
+        # If duplex says TTS is active, mic should not be open — but check anyway
+        # via voice_loop's is_listening flag above is authoritative.
+        _ = _dup
+    except Exception:
+        pass
+    return False
+
+
+def _safe_sd_stop() -> None:
+    """Call sd.stop() only when mic is not open — prevents PortAudio abort on macOS."""
+    if _mic_is_open():
+        print("[TTS] sd.stop() skipped — mic is open (duplex half-duplex guard)")
+        return
+    try:
+        sd.stop()
+    except Exception:
+        pass
+
+
+def _duplex_notify_start(text: str) -> None:
+    try:
+        from stt.duplex import duplex as _dup
+
+        _dup.notify_tts_start(text)
+    except Exception:
+        pass
+    # also mirror to runtime flags for filter.py fallback
+    try:
+        from services.runtime_state import flags
+
+        if text:
+            flags.last_assistant_response = text.strip()
+    except Exception:
+        pass
+
+
+def _duplex_notify_end() -> None:
+    try:
+        from stt.duplex import duplex as _dup
+
+        _dup.notify_tts_end()
+    except Exception:
+        pass
 
 
 def _resolve_voice_wav_path() -> Path:
@@ -39,11 +111,17 @@ def _resolve_voice_wav_path() -> Path:
     except ImportError:
         pass
 
+    voices_dir = Path(__file__).with_name("voices")
+    for name in ("FridayVoice2.wav", "friday-voice.wav"):
+        candidate = voices_dir / name
+        if candidate.is_file():
+            return candidate.resolve()
+
     path = _DEFAULT_VOICE_WAV.resolve()
     if not path.is_file():
         raise FileNotFoundError(
             f"FRIDAY voice file missing: {path}. "
-            "Place friday-voice.wav in backend/tts/voices/ or set FRIDAY_VOICE_PATH."
+            "Place FridayVoice2.wav or friday-voice.wav in backend/tts/voices/ or set FRIDAY_VOICE_PATH."
         )
     return path
 
@@ -63,30 +141,117 @@ def _load_friday_voice_state(model: TTSModel, wav_path: Path) -> dict:
         f"[TTS] Encoding FRIDAY voice from WAV: {wav_path} "
         f"({wav_path.stat().st_size} bytes, voice cloning)"
     )
-    return model.get_state_for_audio_prompt(wav_path, truncate=False)
+    return model.get_state_for_audio_prompt(wav_path, truncate=True)
 
 
-def _get_hardware_sample_rate():
+def _hf_token() -> str:
+    token = (
+        os.environ.get("HF_TOKEN")
+        or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+        or ""
+    ).strip()
+    if token:
+        return token
+    try:
+        from config import settings
+
+        token = (getattr(settings, "HF_TOKEN", "") or "").strip()
+    except Exception:
+        token = ""
+    return token
+
+
+def _require_cloning_weights() -> None:
+    from pocket_tts.utils.utils import download_if_necessary
+
+    token = _hf_token()
+    if not token:
+        raise RuntimeError(
+            "HF_TOKEN is not set. Put a Hugging Face token with access to "
+            "kyutai/pocket-tts in backend/.env"
+        )
+    os.environ["HF_TOKEN"] = token
+    os.environ["HUGGING_FACE_HUB_TOKEN"] = token
+    try:
+        from huggingface_hub import login
+
+        login(token=token, add_to_git_credential=False)
+    except Exception as exc:
+        print(f"[TTS] Hugging Face login warning: {type(exc).__name__}")
+    try:
+        download_if_necessary(CLONE_WEIGHTS)
+    except Exception as exc:
+        raise RuntimeError(
+            "Could not download Pocket TTS cloning weights from kyutai/pocket-tts. "
+            f"Accept the model terms on Hugging Face, then retry. ({type(exc).__name__})"
+        ) from exc
+
+
+def _get_hardware_sample_rate() -> int:
     global _hardware_sample_rate
     if _hardware_sample_rate is not None:
         return _hardware_sample_rate
+    model_rate = 24000
+    if _model is not None and hasattr(_model, "sample_rate"):
+        model_rate = int(_model.sample_rate)
     try:
-        device_info = sd.query_devices(kind='output')
-        _hardware_sample_rate = int(device_info['default_samplerate'])
+        sd.check_output_settings(samplerate=model_rate)
+        _hardware_sample_rate = model_rate
     except Exception:
-        _hardware_sample_rate = 44100
+        try:
+            device_info = sd.query_devices(kind="output")
+            _hardware_sample_rate = int(device_info["default_samplerate"])
+        except Exception:
+            _hardware_sample_rate = model_rate
     return _hardware_sample_rate
 
-def _resample_audio(audio, original_rate, target_rate):
+
+def _resample_audio(audio, original_rate: int, target_rate: int) -> np.ndarray:
+    """Resample using bandlimited polyphase filtering if rates differ; never naive linear interpolation."""
     if original_rate == target_rate:
-        return audio
-    duration = len(audio) / original_rate
-    num_samples = int(duration * target_rate)
-    return np.interp(
-        np.linspace(0, len(audio), num_samples, endpoint=False),
-        np.arange(len(audio)),
-        audio.flatten()
-    ).reshape(-1, 1).astype(np.float32)
+        return np.asarray(audio, dtype=np.float32).reshape(-1, 1)
+    src = np.asarray(audio, dtype=np.float32).flatten()
+    if src.size == 0:
+        return np.zeros((0, 1), dtype=np.float32)
+    try:
+        import scipy.signal as sps
+        import math
+        gcd = math.gcd(int(original_rate), int(target_rate))
+        up = int(target_rate // gcd)
+        down = int(original_rate // gcd)
+        resampled = sps.resample_poly(src, up, down)
+        return resampled.astype(np.float32).reshape(-1, 1)
+    except Exception:
+        return src.reshape(-1, 1)
+
+
+def _postprocess(samples: np.ndarray, sample_rate: int) -> np.ndarray:
+    """Clean DC offset and calibrate peak gain without frequency/phase distortion."""
+    if samples.size == 0:
+        return samples.astype(np.float32)
+    x = samples.astype(np.float32).reshape(-1).copy()
+    x -= np.mean(x)
+    peak = float(np.max(np.abs(x)))
+    if peak > 1e-5:
+        target_peak = _PEAK_TARGET
+        gain = min(target_peak / peak, _MAX_BOOST)
+        x *= gain
+    return np.clip(x, -1.0, 1.0).astype(np.float32)
+
+
+def _audio_is_safe(samples: np.ndarray, sample_rate: int) -> tuple[bool, str]:
+    if samples is None or samples.size == 0:
+        return False, "empty"
+    if samples.size < max(16, sample_rate // 100):
+        return False, "too-short"
+    if not np.isfinite(samples).all():
+        return False, "nan/inf"
+    x = samples.astype(np.float64).reshape(-1)
+    peak = float(np.max(np.abs(x)))
+    rms = float(np.sqrt(np.mean(x * x)))
+    if peak > 1.05:
+        return False, f"overrange peak={peak:.3f}"
+    return True, f"ok peak={peak:.3f} rms={rms:.3f} dur={len(x) / sample_rate:.2f}s"
 
 
 def num_to_words(n: int) -> str:
@@ -256,6 +421,12 @@ def _strip_speech_template_markers(text: str) -> str:
 
 def clean_text_for_speech(text: str) -> str:
     """Trim formatting noise so the cloned voice stays natural."""
+    try:
+        from tts.pronunciation import apply_pronunciation_fixes
+
+        text = apply_pronunciation_fixes(text)
+    except Exception:
+        pass
     text = _normalize_friday_pronunciation(text)
     text = _strip_speech_template_markers(text)
     text = re.sub(r"\ba\.?k\.?a\b\.?", "also known as", text, flags=re.IGNORECASE)
@@ -286,15 +457,24 @@ def _ensure_model_loaded():
         if _model is not None and _voice_state is not None:
             return
 
-        model = TTSModel.load_model()
-        if not model.has_voice_cloning:
+        _require_cloning_weights()
+        model = TTSModel.load_model(
+            temp=_LOAD_TEMP,
+            sampler_decode_steps=_LOAD_LSD_STEPS,
+            noise_clamp=_LOAD_NOISE_CLAMP,
+            eos_threshold=_LOAD_EOS_THRESHOLD,
+        )
+        if not getattr(model, "has_voice_cloning", True):
             raise RuntimeError("pocket_tts voice cloning is unavailable in this install.")
 
         wav_path = _resolve_voice_wav_path()
         voice_state = _load_friday_voice_state(model, wav_path)
         _model = model
         _voice_state = voice_state
-        print(f"[TTS] FRIDAY voice ready — cloned from {wav_path.name}")
+        print(
+            f"[TTS] FRIDAY voice ready — cloned from {wav_path.name} "
+            f"(temp={_LOAD_TEMP}, steps={_LOAD_LSD_STEPS})"
+        )
 
 
 def _voice_state_for_generation(*, force_reload: bool = False):
@@ -307,12 +487,13 @@ def _voice_state_for_generation(*, force_reload: bool = False):
     return _voice_state
 
 
-_TTS_CHUNK_MAX = 140
+_TTS_CHUNK_MAX = 200
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+_CLAUSE_SPLIT = re.compile(r"(?<=[,;:])\s+")
 
 
 def _split_for_tts(text: str, max_chars: int = _TTS_CHUNK_MAX) -> list[str]:
-    """Break long replies into pocket-tts-safe chunks."""
+    """Break long replies into natural sentence-sized pieces without cutting words."""
     text = text.strip()
     if not text:
         return []
@@ -320,28 +501,36 @@ def _split_for_tts(text: str, max_chars: int = _TTS_CHUNK_MAX) -> list[str]:
         return [text]
 
     chunks: list[str] = []
-    buf = ""
-    for part in _SENTENCE_SPLIT.split(text):
-        part = part.strip()
-        if not part:
+    sentences = [s.strip() for s in _SENTENCE_SPLIT.split(text) if s.strip()]
+    for sentence in sentences:
+        if len(sentence) <= max_chars:
+            chunks.append(sentence)
             continue
-        candidate = f"{buf} {part}".strip() if buf else part
-        if len(candidate) <= max_chars:
-            buf = candidate
-            continue
-        if buf:
-            chunks.append(buf)
-            buf = ""
-        if len(part) <= max_chars:
-            buf = part
-            continue
-        for i in range(0, len(part), max_chars):
-            piece = part[i : i + max_chars].strip()
-            if len(piece) >= 2:
-                chunks.append(piece)
-    if buf:
-        chunks.append(buf)
-    return [c for c in chunks if len(c) >= 2] or [text[:max_chars].strip()]
+        clauses = [c.strip() for c in _CLAUSE_SPLIT.split(sentence) if c.strip()]
+        cur = ""
+        for clause in clauses:
+            if len(clause) > max_chars:
+                words = clause.split()
+                w_buf = ""
+                for w in words:
+                    if len(w_buf) + len(w) + 1 <= max_chars:
+                        w_buf = f"{w_buf} {w}".strip()
+                    else:
+                        if w_buf:
+                            chunks.append(w_buf)
+                        w_buf = w
+                if w_buf:
+                    chunks.append(w_buf)
+            elif len(cur) + len(clause) + 2 <= max_chars:
+                cur = f"{cur}, {clause}".strip(", ")
+            else:
+                if cur:
+                    chunks.append(cur)
+                cur = clause
+        if cur:
+            chunks.append(cur)
+
+    return [c for c in chunks if len(c) >= 2] or [text]
 
 
 def warm_up_tts():
@@ -395,7 +584,7 @@ def _ensure_playback_stream(target_rate: int):
     return stream
 
 
-_MIN_AUDIBLE_SECONDS = 0.25
+_MIN_AUDIBLE_SECONDS = 0.12
 
 
 def _play_samples(samples: np.ndarray, target_rate: int) -> bool:
@@ -406,67 +595,111 @@ def _play_samples(samples: np.ndarray, target_rate: int) -> bool:
         print(f"[TTS] Skipping inaudible clip ({duration:.2f}s)")
         return False
 
-    print(f"[TTS] Playing {duration:.2f}s on device {sd.default.device[1]} @ {target_rate}Hz")
-    try:
-        stream = _ensure_playback_stream(target_rate)
-        block = 1024
-        for start in range(0, len(audio), block):
-            if _stop_event.is_set():
-                return False
-            chunk = audio[start : start + block]
-            stream.write(chunk.reshape(-1, 1))
+    ok, reason = _audio_is_safe(audio, target_rate)
+    if not ok:
+        print(f"[TTS] Skipping unsafe clip ({reason})")
+        return False
+
+    fade = max(1, int(target_rate * 0.008))
+    if audio.size > 2 * fade:
+        audio = audio.copy()
+        audio[:fade] *= np.linspace(0.0, 1.0, fade, dtype=np.float32)
+        audio[-fade:] *= np.linspace(1.0, 0.0, fade, dtype=np.float32)
+
+    print(f"[TTS] Playing {duration:.2f}s ({reason}) @ {target_rate}Hz")
+    import sys
+    import time as _time
+
+    def _play_blocking() -> bool:
+        play_data = np.column_stack([audio, audio]) if audio.ndim == 1 else audio
+        sd.play(play_data, samplerate=target_rate, blocking=True)
         return True
-    except Exception as exc:
-        print(f"[TTS] stream playback failed ({exc}), trying sd.play")
+
+    # macOS CoreAudio: sounddevice / PortAudio clashes with the active STT
+    # microphone stream, causing severe buffer underruns, stutter, and broken robotic audio.
+    # afplay plays directly via macOS system AudioServices with hardware resampling and zero underrun.
+    if sys.platform == "darwin":
+        global _afplay_proc
+        import tempfile
+        import subprocess
+        import scipy.io.wavfile as _wavfile
+
+        tmp_wav = None
         try:
-            sd.play(audio, target_rate)
-            sd.wait()
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                tmp_wav = f.name
+            pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
+            _wavfile.write(tmp_wav, target_rate, pcm)
+
+            _afplay_proc = subprocess.Popen(["afplay", tmp_wav])
+            while _afplay_proc.poll() is None:
+                if _stop_event.is_set():
+                    _afplay_proc.terminate()
+                    try:
+                        _afplay_proc.kill()
+                    except Exception:
+                        pass
+                    break
+                _time.sleep(0.01)
+            _afplay_proc = None
             return True
-        except Exception as exc2:
-            print(f"[TTS] sounddevice playback failed ({exc2}), trying pygame")
-            return _play_samples_pygame(audio, target_rate)
+        except Exception as exc:
+            print(f"[TTS] afplay failed ({exc}), falling back to sounddevice")
+            _afplay_proc = None
+            try:
+                return _play_blocking()
+            except Exception as exc2:
+                print(f"[TTS] sounddevice playback failed ({exc2})")
+                return False
+        finally:
+            if tmp_wav:
+                try:
+                    os.unlink(tmp_wav)
+                except Exception:
+                    pass
 
+    idx = 0
+    n = int(audio.size)
+    deadline = _time.monotonic() + duration + 1.5
 
-def _play_samples_pygame(audio: np.ndarray, target_rate: int) -> bool:
-    import tempfile
-    import wave
+    def _cb(outdata, frames, _time_info, status):
+        nonlocal idx
+        if status:
+            print(f"[TTS] stream status: {status}")
+        if _stop_event.is_set() or idx >= n:
+            outdata.fill(0)
+            raise sd.CallbackStop
+        end = min(n, idx + frames)
+        chunk = audio[idx:end]
+        outdata[: len(chunk), 0] = chunk
+        if len(chunk) < frames:
+            outdata[len(chunk) :, 0] = 0
+        idx = end
+        if idx >= n:
+            raise sd.CallbackStop
 
     try:
-        import pygame
+        with sd.OutputStream(
+            samplerate=target_rate,
+            channels=1,
+            dtype="float32",
+            callback=_cb,
+            blocksize=2048,
+            latency="high",
+        ):
+            while idx < n and not _stop_event.is_set() and _time.monotonic() < deadline:
+                sd.sleep(20)
+        return idx >= n
+    except sd.CallbackStop:
+        return idx >= n
     except Exception as exc:
-        print(f"[TTS] pygame unavailable: {exc}")
-        return False
-
-    pcm = np.clip(audio, -1.0, 1.0)
-    pcm16 = (pcm * 32767).astype(np.int16)
-
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    tmp_path = tmp.name
-    tmp.close()
-    try:
-        with wave.open(tmp_path, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(target_rate)
-            wf.writeframes(pcm16.tobytes())
-
-        if not pygame.mixer.get_init():
-            pygame.mixer.init(frequency=target_rate, size=-16, channels=1, buffer=512)
-
-        pygame.mixer.music.load(tmp_path)
-        pygame.mixer.music.play()
-        while pygame.mixer.music.get_busy():
-            pygame.time.wait(50)
-        pygame.mixer.music.unload()
-        return True
-    except Exception as exc:
-        print(f"[TTS] pygame playback failed: {exc}")
-        return False
-    finally:
+        print(f"[TTS] OutputStream failed ({exc}); falling back to sd.play")
+        _safe_sd_stop()
         try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
+            return _play_blocking()
+        except Exception as play_exc:
+            print(f"[TTS] sd.play failed ({play_exc})")
+            return False
 
 
 def _set_tts_spoke(ok: bool) -> None:
@@ -479,7 +712,9 @@ def _set_tts_spoke(ok: bool) -> None:
 
 
 def speak(text: str) -> bool:
-    """Generate speech with sentence prefetching to avoid gaps between chunks."""
+    """Generate each sentence fully, then play it as one clip."""
+    global _is_speaking, _stream_active
+
     clean_text = clean_text_for_speech(text)
     if len(clean_text) < 2:
         _set_tts_spoke(False)
@@ -500,21 +735,66 @@ def speak(text: str) -> bool:
         _set_tts_spoke(False)
         return False
 
+    if not _playback_lock.acquire(timeout=8.0):
+        _set_tts_spoke(False)
+        return False
+
     try:
         _stop_event.clear()
-        start_streaming()
-        for chunk in chunks:
+        _is_speaking = True
+        _stream_active = True
+        _duplex_notify_start(clean_text)
+        try:
+            from services.tts_broadcast import notify_tts_active
+
+            notify_tts_active(True)
+        except Exception:
+            pass
+        _safe_sd_stop()
+
+        target_rate = _get_hardware_sample_rate()
+        audio_pieces: list[np.ndarray] = []
+        silence = np.zeros(int(target_rate * 0.12), dtype=np.float32)
+
+        for i, sentence in enumerate(chunks):
             if _stop_event.is_set():
                 break
-            stream_sentence(chunk)
-        played = stop_streaming(wait_timeout=180.0)
-        ok = played > 0
+            samples = _generate_audio_for_text(sentence)
+            if samples is None or samples.size == 0:
+                continue
+            audio_pieces.append(samples.flatten())
+            if i < len(chunks) - 1:
+                audio_pieces.append(silence)
+
+        if not audio_pieces or _stop_event.is_set():
+            _set_tts_spoke(False)
+            return False
+
+        full_audio = np.concatenate(audio_pieces)
+        fade = min(int(target_rate * 0.006), full_audio.size // 4)
+        if fade > 0:
+            full_audio[:fade] *= np.linspace(0.0, 1.0, fade, dtype=np.float32)
+            full_audio[-fade:] *= np.linspace(1.0, 0.0, fade, dtype=np.float32)
+
+        ok = _play_samples(full_audio, target_rate)
         _set_tts_spoke(ok)
         return ok
     except Exception as exc:
         print(f"[TTS Speak Error] {exc}")
         _set_tts_spoke(False)
         return False
+    finally:
+        _is_speaking = False
+        _stream_active = False
+        _stop_event.clear()
+        _duplex_notify_end()
+        _playback_lock.release()
+        try:
+            from services.tts_broadcast import notify_tts_active
+
+            notify_tts_active(False)
+        except Exception:
+            pass
 
 
 # ── Streaming audio pipeline ────────────────────────────────────────────────────
@@ -529,7 +809,7 @@ _stream_sentences_played = 0
 
 
 def _generate_audio_for_text(text: str) -> np.ndarray | None:
-    """Generate audio samples for a single text chunk."""
+    """Generate audio samples for a single text chunk with serialized model access."""
     clean_text = clean_text_for_speech(text)
     if len(clean_text) < 2:
         return None
@@ -538,89 +818,51 @@ def _generate_audio_for_text(text: str) -> np.ndarray | None:
     except Exception:
         return None
     target_rate = _get_hardware_sample_rate()
-    try:
-        raw = _model.generate_audio(
-            model_state=voice_state,
-            text_to_generate=clean_text,
-            frames_after_eos=_FRAMES_AFTER_EOS,
-            copy_state=True,
-        )
-        return _raw_audio_to_samples(raw, target_rate)
-    except Exception as exc:
-        print(f"[TTS Gen Error] {exc}")
-        return None
+    model_rate = getattr(_model, "sample_rate", 24000)
+
+    with _model_lock:
+        try:
+            if _stop_event.is_set():
+                return None
+            audio_tensor = _model.generate_audio(
+                model_state=voice_state,
+                text_to_generate=clean_text,
+                copy_state=True,
+            )
+            if audio_tensor is None or audio_tensor.numel() == 0 or _stop_event.is_set():
+                return None
+            raw = audio_tensor.detach().cpu().numpy().reshape(-1)
+            polished = _postprocess(raw, model_rate)
+            ok, reason = _audio_is_safe(polished, model_rate)
+            if not ok:
+                print(f"[TTS] Generated audio rejected ({reason})")
+                return None
+            return _raw_audio_to_samples(polished, target_rate)
+        except Exception as exc:
+            print(f"[TTS Gen Error] {exc}")
+            return None
 
 
 def _stream_worker():
-    """Background thread: consumes sentences, prefetches audio, plays in real-time."""
+    """Background thread: consumes sentences and plays smoothly without thread collisions."""
     global _active_stream, _is_speaking, _stream_sentences_played
     target_rate = _get_hardware_sample_rate()
 
-    prefetch_lock = threading.Lock()
-    prefetch_box: dict[str, Any] = {"sentence": None, "samples": None}
-    prefetch_thread: threading.Thread | None = None
-    held_sentence: str | None = None
-
-    def _prefetch(sentence: str) -> None:
-        samples = _generate_audio_for_text(sentence)
-        with prefetch_lock:
-            prefetch_box["sentence"] = sentence
-            prefetch_box["samples"] = samples
-
-    def _take_prefetched(sentence: str) -> np.ndarray | None:
-        with prefetch_lock:
-            if prefetch_box["sentence"] == sentence and prefetch_box["samples"] is not None:
-                samples = prefetch_box["samples"]
-                prefetch_box["sentence"] = None
-                prefetch_box["samples"] = None
-                return samples
-        return None
-
-    def _next_sentence() -> str | None:
-        nonlocal held_sentence
-        if held_sentence is not None:
-            sentence = held_sentence
-            held_sentence = None
-            return sentence
-        try:
-            return _stream_sentence_queue.get(timeout=0.3)
-        except queue.Empty:
-            return "__WAIT__"
-
     try:
-        while True:
-            if _stop_event.is_set():
-                break
-
-            sentence = _next_sentence()
-            if sentence == "__WAIT__":
+        while not _stop_event.is_set():
+            try:
+                sentence = _stream_sentence_queue.get(timeout=0.25)
+            except queue.Empty:
                 if not _stream_active:
                     break
                 continue
-            if sentence is None:
+
+            if sentence is None or _stop_event.is_set():
                 break
-            if _stop_event.is_set():
-                break
 
-            samples = _take_prefetched(sentence)
-            if samples is None:
-                samples = _generate_audio_for_text(sentence)
-
-            # Prefetch the following sentence while this one plays.
-            try:
-                upcoming = _stream_sentence_queue.get_nowait()
-            except queue.Empty:
-                upcoming = None
-            if upcoming is not None and upcoming is not sentence:
-                held_sentence = upcoming
-                if prefetch_thread is None or not prefetch_thread.is_alive():
-                    prefetch_thread = threading.Thread(
-                        target=_prefetch, args=(upcoming,), daemon=True
-                    )
-                    prefetch_thread.start()
-
+            samples = _generate_audio_for_text(sentence)
             if samples is not None and not _stop_event.is_set():
-                if not _playback_lock.acquire(timeout=2.0):
+                if not _playback_lock.acquire(timeout=4.0):
                     continue
                 try:
                     _is_speaking = True
@@ -629,15 +871,12 @@ def _stream_worker():
                 finally:
                     _is_speaking = False
                     _playback_lock.release()
-
-            if prefetch_thread is not None and prefetch_thread.is_alive():
-                prefetch_thread.join(timeout=0.05)
-
     except Exception as exc:
         print(f"[TTS Stream Error] {exc}")
     finally:
         _is_speaking = False
         _active_stream = None
+        _duplex_notify_end()
         try:
             from services.tts_broadcast import notify_tts_active
 
@@ -656,6 +895,7 @@ def start_streaming():
     warm_up_tts()
     _stream_sentences_played = 0
     _stream_active = True
+    _duplex_notify_start("")  # mark TTS active for duplex gate (text appended per sentence)
     try:
         from services.tts_broadcast import notify_tts_active
 
@@ -663,6 +903,7 @@ def start_streaming():
     except Exception:
         pass
     _stop_event.clear()
+    _safe_sd_stop()
     # Drain any stale sentences
     while not _stream_sentence_queue.empty():
         try:
@@ -675,6 +916,9 @@ def start_streaming():
 
 def stream_sentence(text: str):
     """Push a sentence into the streaming TTS pipeline."""
+    # Record for echo filter even before audio generates
+    if text and len(text.strip()) >= 2:
+        _duplex_notify_start(text.strip())
     _stream_sentence_queue.put(text)
 
 
@@ -683,11 +927,12 @@ def stop_streaming(wait_timeout: float = 120.0) -> int:
     global _stream_active, _stream_thread
     _stream_active = False
     _stream_sentence_queue.put(None)  # sentinel
-    if _stream_thread is not None:
-        _stream_thread.join(timeout=wait_timeout)
-        if _stream_thread.is_alive():
+    thread = _stream_thread
+    _stream_thread = None
+    if thread is not None:
+        thread.join(timeout=wait_timeout)
+        if thread.is_alive():
             print(f"[TTS] Streaming worker still running after {wait_timeout}s")
-        _stream_thread = None
     return _stream_sentences_played
 
 
@@ -697,11 +942,19 @@ def stream_sentences_played() -> int:
 
 def stop_speech():
     """Stop any current Pocket TTS playback as quickly as possible."""
-    global _active_stream, _is_speaking, _stream_active, _stream_thread, _playback_stream
+    global _active_stream, _is_speaking, _stream_active, _stream_thread, _playback_stream, _afplay_proc
 
     was_speaking = is_tts_active()
     _stop_event.set()
     _stream_active = False
+
+    if _afplay_proc is not None:
+        try:
+            _afplay_proc.terminate()
+            _afplay_proc.kill()
+        except Exception:
+            pass
+        _afplay_proc = None
 
     while not _stream_sentence_queue.empty():
         try:
@@ -722,9 +975,10 @@ def stop_speech():
         print(f"[TTS Stop Error] {exc}")
     _active_stream = None
 
-    if _stream_thread is not None and _stream_thread.is_alive():
-        _stream_thread.join(timeout=2.0)
+    thread = _stream_thread
     _stream_thread = None
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=2.0)
     while not _stream_sentence_queue.empty():
         try:
             _stream_sentence_queue.get_nowait()
@@ -751,6 +1005,7 @@ def stop_speech():
     _is_speaking = False
     _stop_event.clear()
     if was_speaking:
+        _duplex_notify_end()
         try:
             from services.tts_broadcast import notify_tts_active
 
@@ -768,6 +1023,8 @@ def is_tts_active() -> bool:
     if _is_speaking or _stream_active:
         return True
     if _stream_thread is not None and _stream_thread.is_alive():
+        return True
+    if _afplay_proc is not None and _afplay_proc.poll() is None:
         return True
     return False
 
@@ -799,27 +1056,18 @@ def speak_filler(text: str):
     try:
         _stop_event.clear()
         _is_speaking = True
+        _duplex_notify_start(clean_text)
         target_rate = _get_hardware_sample_rate()
 
-        voice_state = _voice_state_for_generation()
-        raw = _model.generate_audio(
-            model_state=voice_state,
-            text_to_generate=clean_text,
-            frames_after_eos=1,
-            copy_state=True,
-        )
-        if _stop_event.is_set():
+        samples = _generate_audio_for_text(clean_text)
+        if samples is None or _stop_event.is_set():
             return
-
-        samples = _raw_audio_to_samples(raw, target_rate)
-        if samples is None:
-            return
-
         _play_samples(samples, target_rate)
     except Exception as exc:
         print(f"[TTS Filler Error] {exc}")
     finally:
         _active_stream = None
         _is_speaking = False
+        _duplex_notify_end()
         _stop_event.clear()
         _playback_lock.release()

@@ -69,11 +69,20 @@ FAST_PATH_CONFIDENCE = 0.88
 CLARIFY_THRESHOLD = 0.55
 
 MEMORY_RETRIEVE_TIMEOUT_S = 1.5
-MEMORY_MIN_QUERY_LEN = 12
-TTS_MAX_CHARS = 400
+MEMORY_MIN_QUERY_LEN = 18
+TTS_MAX_CHARS = 280
 
 WAKE_WORD_PREFIXES = ("hey friday", "friday", "okay friday", "ok friday")
-SCREEN_CONTEXT_TRIGGERS = ("what's on", "what is on", "screen", "window", "here", "this")
+SCREEN_CONTEXT_RE = re.compile(
+    r"\b(what'?s on|what is on|on (?:my |the )?(?:screen|window|display)|"
+    r"this (?:code|file|window|screen|page)|read the screen)\b",
+    re.I,
+)
+_SKIP_MEMORY_RE = re.compile(
+    r"\b(what time|what'?s the time|current time|joke|hello|good (?:morning|afternoon|evening)|"
+    r"introduce yourself|open |launch |volume |mute|unmute|play )\b",
+    re.I,
+)
 GREETING_PATTERN = re.compile(r"^(hi|hello|hey|thanks|ok|okay)\b", re.IGNORECASE)
 INTRO_REQUEST_PATTERN = re.compile(
     r"\b(?:introduce\s+(?:yourself|your\s+self)|who\s+are\s+you|what\s+are\s+you|"
@@ -88,6 +97,9 @@ CONVERSATIONAL_INTENTS: frozenset[IntentCategory] = frozenset({
     IntentCategory.WRITE_TEXT,
     IntentCategory.SUMMARISE,
     IntentCategory.TRANSLATE,
+    IntentCategory.PRESENCE_MODE,   # handled inline in node_respond — no tools needed
+    IntentCategory.STOP,            # handled inline — cancels everything immediately
+    IntentCategory.STANDING_ORDER,  # handled inline — writes to standing_orders store
 })
 
 # Intents that always require user confirmation before execution.
@@ -138,16 +150,14 @@ async def _call_llm(
     stream: bool = False,
 ) -> str:
     """Route a completion request to the configured LLM provider."""
-    from config import settings
+    from config import settings, use_ollama
     from services.runtime_state import flags
 
-    if flags.voice_turn:
-        stream = False
-        max_tokens = min(max_tokens, 280)
+    if flags.voice_turn or use_ollama():
+        max_tokens = min(max_tokens, 180)
 
-    model = state.get("llm_model", settings.LLM_MODEL)
-    groq_model = model if str(model).startswith("llama") else settings.LLM_MODEL
-    return await groq_complete(prompt, model=groq_model, max_tokens=max_tokens, stream=stream)
+    model = state.get("llm_model") or settings.LLM_MODEL
+    return await groq_complete(prompt, model=model, max_tokens=max_tokens, stream=stream)
 
 
 # ---------------------------------------------------------------------------
@@ -183,10 +193,12 @@ def _normalize_stt_phrasing(text: str) -> str:
 
 
 def _should_retrieve_memories(cleaned_input: str) -> bool:
-    """Skip vector retrieval for greetings and very short utterances."""
+    """Skip vector retrieval for greetings, commands, and very short utterances."""
     if len(cleaned_input) < MEMORY_MIN_QUERY_LEN:
         return False
-    return GREETING_PATTERN.match(cleaned_input) is None
+    if GREETING_PATTERN.match(cleaned_input) or _SKIP_MEMORY_RE.search(cleaned_input):
+        return False
+    return True
 
 
 async def _retrieve_memories(query: str) -> list[str]:
@@ -244,7 +256,7 @@ def _build_memory_context(
 
 async def _maybe_capture_screen(cleaned_input: str) -> Optional[str]:
     """OCR the active window when the user refers to on-screen content."""
-    if not any(trigger in cleaned_input for trigger in SCREEN_CONTEXT_TRIGGERS):
+    if not SCREEN_CONTEXT_RE.search(cleaned_input or ""):
         return None
     from executor.mouse_controller import ComputerController
 
@@ -266,6 +278,14 @@ async def _classify_intent(state: AgentState) -> dict[str, Any]:
     3. Otherwise fall back to full ``router.classify`` (rules + LLM).
     """
     text = state["cleaned_input"]
+    if _looks_like_fragment(text):
+        return {
+            "intent": IntentCategory.CHAT,
+            "confidence": 0.9,
+            "params": {},
+            "source": "fragment",
+            "fast_path": True,
+        }
     rule_result: ClassificationResult = _router._rule_classify(text)
 
     if rule_result.confidence >= FAST_PATH_CONFIDENCE:
@@ -290,8 +310,13 @@ async def _classify_intent(state: AgentState) -> dict[str, Any]:
         screen_context=state.get("screen_context"),
         active_window=state.get("active_window"),
     )
+    intent = hybrid["intent"]
+    if intent in (IntentCategory.SEARCH_WEB, IntentCategory.EXPLAIN) and (
+        _looks_like_fragment(text) or not _looks_like_knowledge_query(text)
+    ):
+        intent = IntentCategory.CHAT
     return {
-        "intent": hybrid["intent"],
+        "intent": intent,
         "confidence": hybrid["confidence"],
         "params": hybrid["params"],
         "source": hybrid.get("source", "llm"),
@@ -327,6 +352,38 @@ def _build_confirmation_prompt(intent: IntentCategory) -> str:
     )
 
 
+_KNOWLEDGE_QUERY_RE = re.compile(
+    r"\b(search|google|look up|find|what is|what are|what's|whats|"
+    r"who is|who are|who's|tell me about|explain|define)\b",
+    re.I,
+)
+_FRAGMENT_LEAD_RE = re.compile(
+    r"^(for|to|and|or|but|with|from|about|of|the|all)\b",
+    re.I,
+)
+
+
+def _looks_like_knowledge_query(text: str) -> bool:
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return False
+    if cleaned.endswith("?"):
+        return True
+    return bool(_KNOWLEDGE_QUERY_RE.search(cleaned))
+
+
+def _looks_like_fragment(text: str) -> bool:
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return True
+    words = cleaned.split()
+    if cleaned.endswith("?") or _looks_like_knowledge_query(cleaned):
+        return False
+    if _FRAGMENT_LEAD_RE.match(cleaned) and len(words) <= 10:
+        return True
+    return False
+
+
 def _maybe_prefill_plan(
     intent: IntentCategory,
     params: dict[str, Any],
@@ -338,7 +395,7 @@ def _maybe_prefill_plan(
     Deterministic plan shortcut — skips the LLM planner when a direct tool
     mapping exists (typically on rule fast-path hits).
     """
-    if intent == IntentCategory.EXPLAIN:
+    if intent == IntentCategory.EXPLAIN and _looks_like_knowledge_query(cleaned_input):
         query = (params.get("query") or cleaned_input or "").strip().rstrip("?.! ")
         if query:
             return [f"smart_search:{query}"], 0
@@ -499,6 +556,17 @@ def _build_chat_prompt(state: AgentState) -> str:
     )
 
 
+def _spoken_now(state: AgentState | None = None) -> str:
+    import datetime
+
+    now = datetime.datetime.now()
+    text = (state or {}).get("cleaned_input", "") if state else ""
+    lower = str(text).lower()
+    if "date" in lower or "day" in lower:
+        return now.strftime("It's %A, %B %d, %Y, Boss.")
+    return now.strftime("It's %I:%M %p on %A, %B %d.")
+
+
 def _synthesise_response(
     intent: IntentCategory,
     status: ExecutionStatus,
@@ -506,18 +574,14 @@ def _synthesise_response(
     state: AgentState,
 ) -> str:
     if status == ExecutionStatus.FAILED:
-        err = calls[-1]["error"] if calls else "unknown error"
-        return (
-            f"Boss, that one's knackered — {err}. "
-            f"Want me to run a different approach?"
-        )
+        err = str(calls[-1]["error"] if calls else "")
+        lowered = err.lower()
+        if "not found on path" in lowered or "couldn't find" in lowered or "not found" in lowered:
+            return "I couldn't open that. Want me to try another way?"
+        return "That didn't work. Want me to try a different approach?"
 
     if status == ExecutionStatus.PARTIAL:
-        err = calls[-1]["error"] if calls else "some steps failed"
-        return (
-            f"Partial success, Boss. Hit a snag: {err}. "
-            f"Shall I retry the failed step?"
-        )
+        return "Partial success. One step failed — shall I retry it?"
 
     for call in reversed(calls):
         if call["status"] == ExecutionStatus.SUCCESS and call.get("result"):
@@ -537,7 +601,7 @@ def _synthesise_response(
         IntentCategory.OPEN_APP: f"Opening {app} now, Boss.",
         IntentCategory.VOLUME_SET: f"Volume at {state['extracted_params'].get('level', '?')} percent, Boss.",
         IntentCategory.SCREEN_CAPTURE: "Screenshot captured, Boss.",
-        IntentCategory.TIME_DATE: str(state.get("llm_response") or "Here's your time check, Boss."),
+        IntentCategory.TIME_DATE: _spoken_now(state),
         IntentCategory.PLAY_MEDIA: (
             f"Spinning up {state['extracted_params'].get('song', 'music')}, Boss."
             if state["extracted_params"].get("song")
@@ -556,10 +620,37 @@ def _clean_for_tts(text: str) -> str:
     text = re.sub(r"`.*?`", "", text)
     text = re.sub(r"\*+", "", text)
     text = re.sub(r"#+\s", "", text)
+    if re.search(r"\[Groq (API key not configured|unavailable)", text, re.I):
+        text = "My language service isn't available right now."
+    text = re.sub(r"not found on PATH", "isn't installed", text, flags=re.I)
     text = clean_text_for_speech(text.strip())
-    max_chars = 220 if flags.voice_turn else TTS_MAX_CHARS
+    max_chars = 260 if flags.voice_turn else TTS_MAX_CHARS
     if len(text) > max_chars:
-        text = text[: max_chars - 3] + "..."
+        # Split on full sentence endings rather than slicing mid-word
+        sentences = re.split(r"(?<=[.!?])\s+", text)
+        collected = []
+        cur_len = 0
+        for s in sentences:
+            if cur_len + len(s) + 1 <= max_chars:
+                collected.append(s)
+                cur_len += len(s) + 1
+            else:
+                break
+        if collected:
+            text = " ".join(collected)
+        else:
+            # If a single sentence is long, split on clause boundaries
+            clauses = re.split(r"(?<=[,;:])\s+", text)
+            collected_c = []
+            cur_c = 0
+            for c in clauses:
+                if cur_c + len(c) + 1 <= max_chars:
+                    collected_c.append(c)
+                    cur_c += len(c) + 1
+                else:
+                    break
+            if collected_c:
+                text = " ".join(collected_c).rstrip(",;:") + "."
     return text
 
 
@@ -608,7 +699,16 @@ async def node_perceive(state: AgentState) -> AgentState:
         else []
     )
 
+    # Phase 5 — Standing orders context injection
+    try:
+        from brain.standing_orders import standing_orders as _so
+        so_context = _so.to_context_string()
+    except Exception:
+        so_context = ""
+
     memory_context = _build_memory_context(short_term, retrieved, prefs)
+    if so_context:
+        memory_context = so_context + ("\n" + memory_context if memory_context else "")
 
     return {
         **state,
@@ -810,16 +910,18 @@ async def node_execute(state: AgentState) -> AgentState:
     )
 
     new_iteration = state["iteration_count"] + 1
+    next_step = step_idx + 1
     next_route = (
         GraphRoute.REFLECT.value
-        if new_iteration >= MAX_ITERATIONS
+        if (next_step >= len(plan) or new_iteration >= MAX_ITERATIONS)
         else GraphRoute.EXECUTE.value
     )
 
+    existing_calls = list(state.get("tool_calls") or [])
     return {
         **state,
-        "tool_calls": [tool_call_result],
-        "current_step": step_idx + 1,
+        "tool_calls": existing_calls + [tool_call_result],
+        "current_step": next_step,
         "iteration_count": new_iteration,
         "route": next_route,
     }
@@ -849,12 +951,96 @@ async def node_respond(state: AgentState) -> AgentState:
     calls = state.get("tool_calls") or []
 
     request = state.get("cleaned_input", "").lower().strip()
+    if intent == IntentCategory.STOP:
+        # Hard-stop everything immediately — then speak.
+        try:
+            from executor.stop import stop_all
+            stop_all(reason="user_voice_command")
+        except Exception as _se:
+            logger.warning("stop_all failed: %s", _se)
+        response = "Stopped."
+        return {
+            **state,
+            "final_response": response,
+            "tts_text": response,
+            "ui_event": None,
+            "llm_response": response,
+        }
+
+    if intent == IntentCategory.STANDING_ORDER:
+        raw = state.get("cleaned_input") or state.get("raw_input") or ""
+        try:
+            from brain.standing_orders import standing_orders, StandingOrder, _parse_standing_order
+            action, order = _parse_standing_order(raw)
+            if action == "remove":
+                standing_orders.remove_by_text(raw)
+                response = "Standing order removed."
+            elif order:
+                standing_orders.add(order)
+                response = f"Got it. I'll {order.instruction} from now on."
+            else:
+                response = "I'm not sure what standing order to set. Could you be more specific?"
+        except Exception as _soe:
+            logger.warning("Standing order handling failed: %s", _soe)
+            response = "I couldn't update that standing order."
+        return {
+            **state,
+            "final_response": response,
+            "tts_text": _clean_for_tts(response),
+            "ui_event": None,
+            "llm_response": response,
+        }
+
+    if intent == IntentCategory.PRESENCE_MODE:
+        # Apply the presence mode change and return a spoken confirmation.
+        from services.presence import classify_presence_intent, PresenceMode
+        text_for_presence = state.get("cleaned_input") or state.get("raw_input") or ""
+        mode, duration_s = classify_presence_intent(text_for_presence)
+        if mode is None:
+            # Fallback: check raw input too
+            mode, duration_s = classify_presence_intent(state.get("raw_input") or "")
+        if mode == PresenceMode.SLEEP:
+            if duration_s:
+                mins = int(duration_s // 60)
+                hrs = int(duration_s // 3600)
+                if hrs >= 1:
+                    time_str = f"{hrs} hour{'s' if hrs > 1 else ''}"
+                else:
+                    time_str = f"{mins} minute{'s' if mins > 1 else ''}"
+                response = f"Going quiet for {time_str}. I'll be back."
+            else:
+                response = "Going to sleep. Say 'Hey Friday, I'm back' when you need me."
+        elif mode == PresenceMode.QUIET:
+            response = "Switching to watch mode. Wake-word only."
+        elif mode == PresenceMode.RESIDENT:
+            response = "I'm back."
+        else:
+            response = "Got it."
+        # Apply mode asynchronously after responding so TTS fires first
+        if mode is not None:
+            async def _apply_later() -> None:
+                import asyncio as _asyncio
+                await _asyncio.sleep(0.8)  # let TTS start
+                try:
+                    from services.presence import presence
+                    await presence.set_mode(mode, reason="user_command", duration_s=duration_s)
+                except Exception as _e:
+                    import logging
+                    logging.getLogger("friday.presence").warning("Presence apply failed: %s", _e)
+            asyncio.create_task(_apply_later())
+        return {
+            **state,
+            "final_response": response,
+            "tts_text": _clean_for_tts(response),
+            "ui_event": None,
+            "llm_response": response,
+        }
     if intent == IntentCategory.CHAT and INTRO_REQUEST_PATTERN.search(request):
         response = get_builder().intro()
         return {
             **state,
             "final_response": response,
-            "tts_text": "",
+            "tts_text": response,
             "intro_audio": True,
             "ui_event": _build_ui_event(intent, state),
             "llm_response": response,
@@ -869,18 +1055,20 @@ async def node_respond(state: AgentState) -> AgentState:
             request,
         ):
             response = get_builder().greeting()
+        elif _looks_like_fragment(request):
+            response = "I only caught a fragment of that. What should I do with it?"
         else:
             response = await _call_llm(
                 state,
                 _build_chat_prompt(state),
-                max_tokens=800,
+                max_tokens=180,
                 stream=True,
             )
     elif intent in CONVERSATIONAL_INTENTS:
         response = await _call_llm(
             state,
             _build_chat_prompt(state),
-            max_tokens=800,
+            max_tokens=180,
             stream=True,
         )
     else:
@@ -897,11 +1085,25 @@ async def node_respond(state: AgentState) -> AgentState:
 
 async def node_remember(state: AgentState) -> AgentState:
     """Persist the completed exchange to session and long-term memory."""
+    # Phase 5 — skip memory storage for sensitive turns
+    raw_input = state["raw_input"]
+    final_response = state.get("final_response", "")
+    try:
+        from brain.redact import contains_secret, safe_for_memory
+        if contains_secret(raw_input):
+            safe_input = safe_for_memory(raw_input) or "[REDACTED]"
+        else:
+            safe_input = raw_input
+        safe_response = safe_for_memory(final_response) or "[REDACTED]"
+    except Exception:
+        safe_input = raw_input
+        safe_response = final_response
+
     await asyncio.to_thread(
         _memory.add_exchange,
         state["session_id"],
-        state["raw_input"],
-        state.get("final_response", ""),
+        safe_input,
+        safe_response,
         state["intent"].value,
         {
             "timestamp": state["timestamp"],
@@ -1077,12 +1279,14 @@ def _initial_state(
 async def run_pipeline(
     raw_input: str,
     session_id: str = "default",
-    llm_provider: str = "groq",
+    llm_provider: str | None = None,
     llm_model: str | None = None,
 ) -> AgentState:
     """Execute the full graph for a single user turn."""
     from config import settings
 
+    if llm_provider is None:
+        llm_provider = settings.LLM_PROVIDER or "groq"
     if llm_model is None:
         llm_model = settings.LLM_MODEL
 
@@ -1113,7 +1317,7 @@ async def run_graph(
     user_input: str,
     thread_id: str = "default",
     history: Optional[list] = None,
-    llm_provider: str = "groq",
+    llm_provider: str | None = None,
     llm_model: str | None = None,
     session_id: str = "default",
 ) -> dict[str, Any]:

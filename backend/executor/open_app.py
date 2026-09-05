@@ -10,8 +10,46 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import webbrowser
 from pathlib import Path
+
+WEB_APP_URLS = {
+    "youtube": "https://www.youtube.com",
+    "you tube": "https://www.youtube.com",
+    "netflix": "https://www.netflix.com",
+    "gmail": "https://mail.google.com",
+    "maps": "https://maps.google.com",
+    "google maps": "https://maps.google.com",
+}
+
+
+def _normalize_app_name(app_name: str) -> str:
+    name = (app_name or "").strip().lower()
+    name = name.strip("\"'`")
+    name = re.sub(r"[.!?,;:]+$", "", name).strip()
+    name = re.sub(r"\s+(app|application|please|for me)$", "", name, flags=re.I)
+    return name.strip()
+
+
+def _open_web_destination(name: str) -> tuple[bool, str] | None:
+    url = WEB_APP_URLS.get(name)
+    if not url:
+        return None
+    try:
+        try:
+            from executor.automation import open_url_in_chrome
+        except ImportError:
+            from automation import open_url_in_chrome
+        if open_url_in_chrome(url):
+            return True, f"Opened {name}."
+    except Exception:
+        pass
+    try:
+        webbrowser.open(url)
+        return True, f"Opened {name}."
+    except Exception as exc:
+        return False, f"failed to open {name}: {exc}"
 
 def get_app_path(app_name: str) -> str:
     """Helper to resolve the path of an application using registry, start menu, or PATH."""
@@ -184,15 +222,16 @@ def save_app_path_preference(app_name: str, path: str):
 
 def open_app(app_name: str):
     """
-    Opens a specified application based on Windows-specific logic.
-    
-    Args:
-        app_name (str): Name of the application to launch.
-        
-    Returns:
-        tuple: (success: bool, message: str)
+    Launch an application, or open a known web destination in the browser.
     """
-    name_lower = app_name.lower().strip()
+    name_lower = _normalize_app_name(app_name)
+    web = _open_web_destination(name_lower)
+    if web is not None:
+        return web
+
+    if sys.platform == "darwin":
+        from executor.sys_platform import open_application
+        return open_application(name_lower or app_name)
     
     # 1. WhatsApp: Use local executable check and protocol fallback
     if "whatsapp" in name_lower:
@@ -321,7 +360,8 @@ def open_app(app_name: str):
         "spotify": "https://open.spotify.com",
         "discord": "https://discord.com/app",
         "telegram": "https://web.telegram.org",
-        "whatsapp": "https://web.whatsapp.com"
+        "whatsapp": "https://web.whatsapp.com",
+        **WEB_APP_URLS,
     }
     matched_app = None
     for key in web_fallbacks:

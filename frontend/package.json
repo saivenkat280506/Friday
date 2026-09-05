@@ -14,11 +14,15 @@
     "desktop": "electron desktop/main.js",
     "desktop:overlay": "electron desktop/main.js",
     "desktop:full": "concurrently -k -n web,electron -c cyan,magenta \"npm run dev:web\" \"wait-on http://127.0.0.1:3000 && electron desktop/main.js\"",
-    "package-desktop": "node ../scripts/package-desktop.js"
+    "package-desktop": "node ../scripts/package-desktop.js",
+    "friday": "bash ../scripts/friday-launcher.sh",
+    "friday:start": "bash ../scripts/friday-launcher.sh --start",
+    "friday:stop": "bash ../scripts/friday-launcher.sh --stop",
+    "friday:app": "bash ../scripts/build-friday-app.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
-
+    "@elevenlabs/react": "^1.15.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@types/three": "^0.184.0",
@@ -42,10 +46,10 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
     "electron": "^42.2.0",
     "electron-packager": "^17.1.2",
     "eslint": "^9",
-    "concurrently": "^9.2.1",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
     "typescript": "^5",

@@ -8,7 +8,10 @@ This is the core of FRIDAY's autonomous control system.
 """
 
 import pyautogui
-import pywinauto
+try:
+    import pywinauto
+except ImportError:
+    pywinauto = None
 import time
 import re
 import os
@@ -18,7 +21,6 @@ import json
 import mss
 from io import BytesIO
 from PIL import Image
-from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 
 # Keep PyAutoGUI's emergency corner fail-safe enabled. Movement helpers below
@@ -377,19 +379,11 @@ def run_os_agent(task_description: str, max_steps: int = 15, use_vision: bool = 
     Returns the final summary string.
     """
 
-    # Use vision model for screenshot-based control
-    if use_vision:
-        try:
-            llm_vision = ChatGroq(
-                model_name="llama-3.2-11b-vision-preview",
-                temperature=0.1,
-                max_tokens=1024,
-            )
-        except Exception:
-            use_vision = False
+    from brain.ollama_client import get_chat_llm
 
-    # Fallback text-only model
-    llm_text = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.1)
+    # Local Ollama model is used for vision/text; Groq remains optional.
+    llm_vision = get_chat_llm(temperature=0.1, max_tokens=1024)
+    llm_text = get_chat_llm(temperature=0.1, max_tokens=1024)
 
     real_w, real_h = _get_screen_size()
 

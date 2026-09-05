@@ -477,35 +477,36 @@ class MemoryStore:
                 
             print(f"[MemoryStore] Consolidating {len(old_ids)} old episodes...")
             
-            # Group into a text block for Groq to summarize
             combined_log = "\n".join(f"- {desc}" for desc in old_episodes_desc)
-            
-            # Call Groq to generate a concise summary
-            groq_key = settings.GROQ_API_KEY
-            if groq_key:
+            summarize_system = (
+                __import__(
+                    "brain.friday_persona", fromlist=["build_summarize_prompt"]
+                ).build_summarize_prompt()
+                + " Dense narrative paragraph of key takeaways and habits."
+            )
+            from config import use_ollama
+            summary_text = ""
+            if use_ollama():
+                from brain.ollama_client import get_ollama
+                summary_text = get_ollama().complete_sync(
+                    combined_log, system=summarize_system, max_tokens=200, temperature=0.3
+                )
+            elif settings.GROQ_API_KEY:
                 payload = {
-                    "model": "llama-3.1-8b-instant",
+                    "model": "openai/gpt-oss-20b",
                     "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                __import__(
-                                    "brain.friday_persona", fromlist=["build_summarize_prompt"]
-                                ).build_summarize_prompt()
-                                + " Dense narrative paragraph of key takeaways and habits."
-                            )
-                        },
-                        {"role": "user", "content": combined_log}
+                        {"role": "system", "content": summarize_system},
+                        {"role": "user", "content": combined_log},
                     ],
                     "temperature": 0.3,
-                    "max_tokens": 200
+                    "max_tokens": 200,
                 }
-                headers = {"Authorization": f"Bearer {groq_key}"}
+                headers = {"Authorization": f"Bearer {settings.GROQ_API_KEY}"}
                 with httpx.Client(timeout=15.0) as client:
                     r = client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
                     r.raise_for_status()
                     summary_text = r.json()["choices"][0]["message"]["content"].strip()
-            else:
+            if not summary_text:
                 summary_text = f"Consolidated log of {len(old_ids)} interactions."
                 
             # Store the consolidated summary in preference memory as 'long_term_summary'

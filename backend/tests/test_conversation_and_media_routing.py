@@ -1,6 +1,8 @@
 from brain.router import IntentRouter
 from brain.state import IntentCategory
 from executor.music_player import parse_music_command
+from executor.open_app import WEB_APP_URLS, _normalize_app_name
+from stt.correct import correct_transcript
 
 
 def test_headlines_use_the_news_intent_with_a_real_topic():
@@ -14,6 +16,34 @@ def test_joke_request_stays_in_conversation():
     result = IntentRouter().classify_rules("tell me a joke")
 
     assert result.intent is IntentCategory.CHAT
+    witty = IntentRouter().classify_rules("Tell me a short witty joke.")
+    assert witty.intent is IntentCategory.CHAT
+    assert witty.confidence >= 0.88
+
+
+def test_time_request_uses_time_intent():
+    result = IntentRouter().classify_rules("What time is it right now?")
+
+    assert result.intent is IntentCategory.TIME_DATE
+
+
+def test_screen_ocr_does_not_trigger_on_where_or_there():
+    from brain.friday_graph import SCREEN_CONTEXT_RE, _should_retrieve_memories
+
+    assert SCREEN_CONTEXT_RE.search("what's on my screen")
+    assert not SCREEN_CONTEXT_RE.search("where is that file")
+    assert not SCREEN_CONTEXT_RE.search("what time is it right now")
+    assert not _should_retrieve_memories("what time is it right now")
+    assert not _should_retrieve_memories("tell me a short witty joke")
+
+
+def test_fragment_does_not_look_like_a_knowledge_query():
+    from brain.friday_graph import _looks_like_fragment, _looks_like_knowledge_query
+
+    assert _looks_like_fragment("For all last 3 years Macbooks")
+    assert not _looks_like_knowledge_query("For all last 3 years Macbooks")
+    assert _looks_like_knowledge_query("what is a MacBook")
+    assert not _looks_like_fragment("what is a MacBook")
 
 
 def test_explain_routes_factual_questions():
@@ -66,6 +96,23 @@ def test_factual_prompt_omits_active_window_context():
     assert "Active window: Visual Studio Code" not in prompt
     assert "FACTUAL Q&A MODE" in prompt
     assert "Do NOT say" in prompt and "give me a sec" in prompt
+
+
+def test_open_youtube_is_not_a_path_app():
+    for phrase in ("Open YouTube", "Open YouTube.", "open youtube", "launch YouTube"):
+        result = IntentRouter().classify_rules(phrase)
+        assert result.intent is IntentCategory.OPEN_YOUTUBE, phrase
+        assert not result.params.get("query"), phrase
+
+
+def test_youtube_app_name_strips_trailing_period():
+    assert _normalize_app_name("youtube.") == "youtube"
+    assert _normalize_app_name("YouTube") in WEB_APP_URLS
+    assert WEB_APP_URLS["youtube"].startswith("https://www.youtube.com")
+
+
+def test_stt_verde_maps_to_friday():
+    assert correct_transcript("Hi, Verde.").lower() == "hi friday"
 
 
 def test_introduce_yourself_stays_in_conversation():

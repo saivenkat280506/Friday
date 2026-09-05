@@ -420,6 +420,7 @@ class ToolRegistry:
             IntentCategory.TIMER: (
                 f"timer_set:{params.get('duration', 1)}:{params.get('unit', 'minute')}"
             ),
+            IntentCategory.CALCULATE: f"calculate:{params.get('expression', '')}",
         }
         val = simple.get(intent)
         return [val] if val is not None else None
@@ -556,12 +557,51 @@ class ToolRegistry:
         ExecutionStatus = state_mod.ExecutionStatus
 
         resolved = self._resolve_name(tool_name)
+
+        # Phase 4 — Permission gate (runs before every tool)
+        try:
+            from executor.permission import permission_gate
+            _confirmed = bool((params or {}).get("_confirmed"))
+            _perm = permission_gate(resolved, params, confirmed=_confirmed)
+            if _perm.blocked:
+                return ToolCall(
+                    tool_name=tool_name,
+                    parameters=params or {},
+                    result=None,
+                    status=ExecutionStatus.FAILED,
+                    error=f"[BLOCKED] {_perm.reason}",
+                )
+            if _perm.requires_confirm:
+                # Surface confirm prompt so graph can speak it to the user
+                return ToolCall(
+                    tool_name=tool_name,
+                    parameters=params or {},
+                    result={"status": "needs_confirm", "message": _perm.prompt},
+                    status=ExecutionStatus.FAILED,
+                    error=_perm.prompt,
+                )
+        except Exception as _pe:
+            logger.debug("[Permission] gate error (skipping): %s", _pe)
+
         fn = self._async_map.get(resolved) or self._async_map.get(tool_name)
         if not fn:
             success, message = await self._execute_sync_tool(tool_name, raw_param, params)
             merged = self._merge_sync_params(resolved, raw_param, params)
             if success:
                 await self._broadcast_companion_for_sync_tool(resolved, merged, message)
+                # Phase 2 — schedule a non-blocking verify for open_app
+                if resolved == "open_app" or tool_name == "open_app":
+                    app_name = merged.get("app") or raw_param or ""
+                    if app_name:
+                        async def _verify_open(app: str = app_name) -> None:
+                            try:
+                                from perception.verify import verify_open_app
+                                v = await verify_open_app(app)
+                                if not v.success:
+                                    logger.info("[Verify] open_app '%s' unconfirmed: %s", app, v.what_was_seen)
+                            except Exception as _ve:
+                                logger.debug("[Verify] open_app verify skipped: %s", _ve)
+                        asyncio.create_task(_verify_open())
                 return ToolCall(
                     tool_name=tool_name,
                     parameters=merged,

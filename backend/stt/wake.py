@@ -13,6 +13,11 @@ import time as time_module
 
 from stt.stt import _resolve_input_device
 
+try:
+    from stt.duplex import duplex as _duplex  # type: ignore
+except Exception:  # pragma: no cover
+    _duplex = None  # type: ignore
+
 # Configuration
 MODEL_SIZE = "tiny.en"
 SAMPLE_RATE = 16000
@@ -61,45 +66,99 @@ def wait_for_wake_word(stop_check=None, barge_in_callback=None) -> bool:
     if input_device is not None:
         stream_kwargs["device"] = input_device
 
-    try:
-        with sd.InputStream(**stream_kwargs):
-            audio_buffer: list[float] = []
-            target_samples = SAMPLE_RATE * CHUNK_DURATION
+    def _tts_busy() -> bool:
+        try:
+            if _duplex is not None:
+                return not _duplex.can_listen()
+        except Exception:
+            pass
+        try:
+            from tts.pocket_tts import is_tts_active
 
-            while True:
-                if stop_check and stop_check():
-                    return False  # Mic reserved by UI — not a wake phrase
+            return bool(is_tts_active())
+        except Exception:
+            return False
 
-                # --- Fill buffer up to one CHUNK_DURATION of audio ---
-                # --- Fill buffer up to one CHUNK_DURATION of audio ---
-                while len(audio_buffer) < target_samples:
+    def _tail_sleep_if_needed() -> None:
+        if _duplex is not None:
+            try:
+                remain = _duplex.tail_remaining_ms()
+                if remain > 0:
+                    time_module.sleep(min(remain / 1000.0, 0.6))
+            except Exception:
+                pass
+
+    # Keep the InputStream closed while Friday is speaking — a live
+    # capture stream on macOS glitches and cuts cloned TTS playback.
+    # Duplex gate also blocks tail period (acoustic echo).
+    while True:
+        if stop_check and stop_check():
+            return False
+        if _tts_busy():
+            time_module.sleep(0.12)
+            continue
+        # Tail guard before opening mic — don't arm during acoustic echo tail
+        _tail_sleep_if_needed()
+        try:
+            with sd.InputStream(**stream_kwargs):
+                audio_buffer: list[float] = []
+                target_samples = SAMPLE_RATE * CHUNK_DURATION
+
+                while True:
+                    if stop_check and stop_check():
+                        return False
+                    if _tts_busy():
+                        return False
+
+                    while len(audio_buffer) < target_samples:
+                        if stop_check and stop_check():
+                            return False
+                        if _tts_busy():
+                            return False
+                        try:
+                            chunk = audio_queue.get(timeout=0.1)
+                            audio_buffer.extend(chunk.flatten())
+                        except queue.Empty:
+                            continue
+
+                    if _tts_busy():
+                        return False
+
+                    audio_data = np.array(audio_buffer[:target_samples], dtype=np.float32)
                     try:
-                        chunk = audio_queue.get(timeout=0.2)
-                        audio_buffer.extend(chunk.flatten())
-                    except queue.Empty:
+                        segments, _ = model.transcribe(audio_data, beam_size=1, language="en")
+                        text = "".join(s.text for s in segments).lower().strip()
+                    except Exception as e:
+                        print(f"[Wake] Transcription error: {e}")
+                        audio_buffer = []
                         continue
 
-                # --- Transcribe ---
-                audio_data = np.array(audio_buffer[:target_samples], dtype=np.float32)
-                try:
-                    segments, _ = model.transcribe(audio_data, beam_size=1, language="en")
-                    text = "".join(s.text for s in segments).lower().strip()
-                except Exception as e:
-                    print(f"[Wake] Transcription error: {e}")
-                    audio_buffer = []
-                    continue
+                    # Duplex echo guard — ignore wake phrase if it's just TTS playback echo
+                    if text and _duplex is not None:
+                        try:
+                            drop, reason = _duplex.should_drop_transcript(text)
+                            if drop:
+                                print(f"[Wake Duplex] Dropped wake transcript ({reason}): {text!r}")
+                                audio_buffer = audio_buffer[-SAMPLE_RATE:]
+                                continue
+                            # extra: if text is echo but contains barge phrase, treat as barge
+                            if _duplex.is_barge_in(text):
+                                print(f"[Wake Duplex] Barge-in detected: {text!r}")
+                                # allow barge — but half-duplex policy says do not trigger
+                                # until TTS is over; we still require TTS to have ended
+                                # so we wait for tail then accept
+                                _tail_sleep_if_needed()
+                        except Exception:
+                            pass
 
-                # --- Check for wake phrases ---
-                if text and any(phrase in text for phrase in WAKE_PHRASES):
-                    print(f"[Wake] Wake phrase detected in: '{text}'")
-                    return True
+                    if text and any(phrase in text for phrase in WAKE_PHRASES):
+                        print(f"[Wake] Wake phrase detected in: '{text}'")
+                        return True
 
-                # Slide window: keep last 1 second for continuity
-                audio_buffer = audio_buffer[-SAMPLE_RATE:]
-
-    except Exception as e:
-        print(f"[Wake] Stream error: {e}")
-        return False
+                    audio_buffer = audio_buffer[-SAMPLE_RATE:]
+        except Exception as e:
+            print(f"[Wake] Stream error: {e}")
+            return False
 
 
 if __name__ == "__main__":

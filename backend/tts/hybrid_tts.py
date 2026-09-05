@@ -13,6 +13,16 @@ _is_speaking = False
 _current_response_id = None
 
 
+def force_stop_all_tts() -> None:
+    global _is_speaking, _current_response_id
+    from tts.pocket_tts import stop_speech
+
+    stop_speech()
+    _is_speaking = False
+    _current_response_id = None
+    print("[TTS] Force-stopped all speech.")
+
+
 async def speak_hybrid(text: str, is_smart: bool = False, response_id: str = None) -> bool:
     global _is_speaking, _current_response_id
 
@@ -20,12 +30,24 @@ async def speak_hybrid(text: str, is_smart: bool = False, response_id: str = Non
     if not clean_text or len(clean_text) < 2 or clean_text in ["...", "."]:
         print(f"[TTS] Skipping empty/short text: {clean_text!r}")
         return False
-
-    if _is_speaking:
+    lowered = clean_text.lower()
+    if (
+        lowered.startswith("[groq")
+        or "api.groq.com" in lowered
+        or "not found on path" in lowered
+        or "client error" in lowered
+    ):
+        print("[TTS] Skipping technical error text")
         return False
 
-    if response_id and response_id == _current_response_id:
+    force_line = bool(response_id and "launch_greeting" in str(response_id))
+    if _is_speaking and not force_line:
         return False
+
+    if response_id and response_id == _current_response_id and not force_line:
+        return False
+    if force_line and _is_speaking:
+        force_stop_all_tts()
 
     from brain.settings import is_muted
     if is_muted():
@@ -35,9 +57,13 @@ async def speak_hybrid(text: str, is_smart: bool = False, response_id: str = Non
     try:
         _is_speaking = True
         _current_response_id = response_id
-        print(f"[TTS] Speaking {len(clean_text)} chars via pocket_tts: {clean_text[:80]!r}...")
-
         from tts.pocket_tts import speak as pocket_speak
+
+        try:
+            from services.websocket_manager import ws_manager
+            await ws_manager.broadcast_json({"type": "assistant_transcript", "text": clean_text})
+        except Exception:
+            pass
 
         ok = await asyncio.to_thread(pocket_speak, clean_text)
         if ok:

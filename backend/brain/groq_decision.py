@@ -24,7 +24,7 @@ from typing import Any
 from groq import Groq
 
 from brain.friday_persona import build_tool_system_prompt
-from config import settings
+from config import settings, use_ollama
 from executor.tools_registry import get_tool_registry, load_skills_registry
 
 logger = logging.getLogger("friday.groq_decision")
@@ -207,6 +207,13 @@ _INTENT_TOOL_RULES: list[tuple[re.Pattern[str], str, dict[str, Any], float, str]
         "ui_click",
     ),
     (
+        re.compile(r"\b(open|launch|start|run)\s+(?:the\s+)?(?:you\s*tube|youtube)\b", re.I),
+        "open_youtube",
+        {},
+        0.92,
+        "open_youtube",
+    ),
+    (
         re.compile(r"\b(open|launch|start|run)\s+", re.I),
         "open_app",
         {},
@@ -299,27 +306,40 @@ class GroqDecisionEngine:
             )
             return rule_decision.to_json()
 
-        if not client:
-            logger.warning("Groq client not configured — using rule fallback")
+        if not client and not use_ollama():
+            logger.warning("No LLM client configured — using rule fallback")
             fallback = rule_decision or self._fallback_decision(user_intent, screen_description)
             return fallback.to_json()
 
         prompt = self._build_prompt(screen_description, user_intent, rule_decision)
         try:
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": build_tool_system_prompt(),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.1,
-                max_tokens=360,
-            )
-            content = (response.choices[0].message.content or "").strip()
-            logger.debug("Groq raw response: %s", content[:320])
+            source = "groq"
+            if use_ollama():
+                from brain.ollama_client import get_ollama
+
+                content = get_ollama().complete_sync(
+                    prompt,
+                    model=settings.OLLAMA_MODEL,
+                    max_tokens=360,
+                    temperature=0.1,
+                    system=build_tool_system_prompt(),
+                )
+                source = "ollama"
+            else:
+                response = client.chat.completions.create(
+                    model="openai/gpt-oss-120b",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": build_tool_system_prompt(),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.1,
+                    max_tokens=360,
+                )
+                content = (response.choices[0].message.content or "").strip()
+            logger.debug("%s raw response: %s", source, content[:320])
 
             parsed = _parse_json_response(content)
             if not parsed:
@@ -350,7 +370,7 @@ class GroqDecisionEngine:
                 params=params,
                 confidence=confidence,
                 reason=validated.reason,
-                source="groq",
+                source=source,
             ).to_json()
 
         except Exception as exc:
@@ -565,6 +585,8 @@ def _extract_type_text(user_intent: str) -> str:
 
 def _extract_app_name(user_intent: str) -> str:
     app = re.sub(r"^(open|launch|start|run)\s+", "", user_intent, flags=re.I).strip()
+    app = app.strip("\"'`")
+    app = re.sub(r"[.!?,;:]+$", "", app).strip()
     return app.split()[0] if app else "notepad"
 
 
@@ -585,6 +607,11 @@ def _enrich_params(tool: str, params: dict[str, Any], user_intent: str | None) -
 
     if tool == "open_app" and not params.get("app") and user_intent:
         params["app"] = _extract_app_name(user_intent)
+
+    if tool == "open_youtube":
+        q = str(params.get("query") or "").strip()
+        if not q or re.fullmatch(r"(?:you\s*tube|youtube)[.!?,;:]*", q, re.I):
+            params["query"] = ""
 
     if tool in ("play_music", "play_spotify_music", "play_youtube", "play_youtube_music"):
         if not params.get("song") and user_intent:
