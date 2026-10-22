@@ -37,16 +37,16 @@ intent, params = route_command("open whatsapp")
 check("open whatsapp is not a send", intent != "send_whatsapp")
 
 ok, phone, label, err = resolve_whatsapp_number("sathish")
-check("resolve sathish", ok and phone.endswith("9876543210"))
+check("resolve sathish", ok and phone.endswith(os.environ.get("SATHISH_PHONE_TAIL", "9876543210")))
 
 ok, phone, label, err = resolve_whatsapp_number("Sadeesh")
-check(f"resolve Sadeesh -> {phone} {err}", ok and phone.endswith("9876543210"))
+check(f"resolve Sadeesh -> {phone} {err}", ok and phone.endswith(os.environ.get("SATHISH_PHONE_TAIL", "9876543210")))
 
 ok, phone, label, err = resolve_whatsapp_number("Satish", "+91...")
-check("ignore placeholder +91...", ok and phone.endswith("9876543210"))
+check("ignore placeholder +91...", ok and phone.endswith(os.environ.get("SATHISH_PHONE_TAIL", "9876543210")))
 
 ok, phone, label, err = resolve_whatsapp_number("Satish", number="+91...")
-check("ignore explicit placeholder", ok and phone.endswith("9876543210"))
+check("ignore explicit placeholder", ok and phone.endswith(os.environ.get("SATHISH_PHONE_TAIL", "9876543210")))
 
 ok, phone, label, err = resolve_whatsapp_number("everyone")
 check("block everyone", not ok)

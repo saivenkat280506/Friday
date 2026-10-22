@@ -98,8 +98,8 @@ def ensure_server(start_if_needed: bool = True) -> bool:
         quit_google_chrome()
 
     env.setdefault("CHROME_PROFILE_DIRECTORY", chrome_profile_directory())
-    env.setdefault("CHROME_GOOGLE_EMAIL", "user@example.com")
-    env.setdefault("SPOTIFY_GOOGLE_EMAIL", "user@example.com")
+    env.setdefault("CHROME_GOOGLE_EMAIL", os.environ.get("CHROME_GOOGLE_EMAIL", ""))
+    env.setdefault("SPOTIFY_GOOGLE_EMAIL", os.environ.get("SPOTIFY_GOOGLE_EMAIL", ""))
 
     log_path = ROOT / "puppeteer-server.log"
     log_f = open(log_path, "a", encoding="utf-8")
